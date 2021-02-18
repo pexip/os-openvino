@@ -1,0 +1,10 @@
+#XXX: separate package for ngraph?
+usr/lib/*/libngraph.so
+#XXX: use the .in hack to generate this file at build time (as multiarch dir needs injecting)
+usr/deployment_tools/inference_engine/lib/*/libinference*.so usr/lib/x86_64-linux-gnu
+#XXX: separate package for plugins?
+usr/deployment_tools/inference_engine/lib/*/libHeteroPlugin.so usr/lib/x86_64-linux-gnu/openvino/inference-plugins
+usr/deployment_tools/inference_engine/lib/*/libMKLDNNPlugin.so usr/lib/x86_64-linux-gnu/openvino/inference-plugins
+usr/deployment_tools/inference_engine/lib/*/libMultiDevicePlugin.so usr/lib/x86_64-linux-gnu/openvino/inference-plugins
+#XXX: use absolute locations in plugin xml?
+usr/deployment_tools/inference_engine/lib/*/plugins.xml usr/lib/x86_64-linux-gnu/openvino/inference-plugins

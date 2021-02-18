@@ -1,0 +1,43 @@
+Source: openvino
+Section: libs
+Priority: optional
+Maintainer: Pexip AS <packaging@pexip.com>
+Standards-Version: 4.3.0
+Build-Depends:
+ cmake (>= 3.13),
+ debhelper (>> 10~),
+ git,
+ libtbb-dev
+Homepage: https://01.org/openvinotoolkit
+Vcs-Browser: https://github.com/openvinotoolkit/openvino
+Vcs-Git: https://github.com/openvinotoolkit/openvino.git
+Description: OpenVINO Deep Learning Toolkit
+ OpenVINO™ toolkit is a comprehensive toolkit for quickly developing
+ applications and solutions that solve a variety of tasks including emulation
+ of human vision, automatic speech recognition, natural language processing,
+ recommendation systems, and many others. Based on latest generations of
+ artificial neural networks, including Convolutional Neural Networks (CNNs),
+ recurrent and attention-based networks, the toolkit extends computer vision
+ and non-vision workloads across Intel® hardware, maximizing performance.
+ It accelerates applications with high-performance, AI and deep learning
+ inference deployed from edge to cloud.
+
+Package: openvino-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends: libinference-engine (= ${binary:Version}), ${misc:Depends}
+Description: ${source:Synopsis} (development files)
+ ${source:Extended-Description}
+ .
+ This package contains header files and other data necessary for
+ developing with OpenVINO.
+
+Package: libinference-engine
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: ${source:Synopsis} (development files)
+ ${source:Extended-Description}
+ .
+ This package contains the runtime libraries.

@@ -1,0 +1,15 @@
+Completely disable documentation as it currently FTBFS
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5c3585a..af8314e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -151,7 +151,7 @@ build_ngraph()
+ add_subdirectory(inference-engine)
+ 
+ add_subdirectory(model-optimizer)
+-add_subdirectory(docs)
++#add_subdirectory(docs)
+ 
+ #
+ # Shellcheck

@@ -1,0 +1,17 @@
+Packing the upstream sources
+----------------------------
+
+At the time of writing, the upstream source tarballs are incomplete.
+Producing a workable set of upstream sources requires the following
+steps:
+
+  1. git clone https://github.com/openvinotoolkit/openvino.git
+  2. cd openvino && git checkout <release-tag>
+  3. git submodule init && git submodule update --recursive --init
+  4. echo ".gitattributes export-ignore" >.git/info/attributes
+  5. git archive --prefix=openvino-<version>/ -o openvino_<version>.tar HEAD
+  6. git submodule foreach 'git archive --prefix=openvino-<version>/$sm_path/ -o wibble.tar HEAD && tar -A --file=$toplevel/openvino_<version>.tar wibble.tar && rm -f wibble.tar'
+  7. gzip openvino_<version>.tar
+
+The resulting openvino_<version>.tar.gz may then be used as the
+original upstream sources.
