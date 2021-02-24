@@ -5,7 +5,6 @@ usr/deployment_tools/inference_engine/share/*.cmake usr/share/cmake/Modules
 #XXX: usr/lib/pkgconfig/*.pc ?
 usr/lib/*/cmake/*/*.cmake
 usr/lib/*/libpugixml.a
-#XXX: multiarch foo
-usr/lib/libade.a usr/lib/x86_64-linux-gnu
+usr/lib/libade.a usr/lib/${DEB_HOST_MULTIARCH}
 usr/share/ade/*.cmake usr/share/cmake/Modules
 usr/cmake/*.cmake usr/share/cmake/Modules

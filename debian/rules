@@ -2,6 +2,10 @@
 
 include /usr/share/dpkg/architecture.mk
 
+DOT_IN_FILES := \
+	libinference-engine.install \
+	openvino-dev.install
+
 %:
 	dh $@
 
@@ -28,9 +32,18 @@ CONFFLAGS := \
 override_dh_auto_configure:
 	dh_auto_configure -- $(CONFFLAGS)
 
+override_dh_auto_clean:
+	dh_auto_clean
+	for file in $(DOT_IN_FILES); do rm -f debian/$${file}; done
+
 override_dh_auto_install:
 	dh_auto_install
 	mkdir -p debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins
 	sed -e "s|location=\"|location=\"/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins/|g" \
 	  <$$(ls debian/tmp/usr/deployment_tools/inference_engine/lib/*/plugins.xml) \
 	  >debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins/plugins.xml
+	for file in $(DOT_IN_FILES); \
+	do \
+	  sed -e "s|\$${DEB_HOST_MULTIARCH}|$(DEB_HOST_MULTIARCH)|g" \
+	  <debian/$${file}.in >debian/$${file}; \
+	done

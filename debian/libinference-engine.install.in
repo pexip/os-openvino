@@ -1,0 +1,8 @@
+#XXX: separate package for ngraph?
+usr/lib/*/libngraph.so
+usr/deployment_tools/inference_engine/lib/*/libinference*.so usr/lib/${DEB_HOST_MULTIARCH}
+#XXX: separate package for plugins?
+usr/deployment_tools/inference_engine/lib/*/libHeteroPlugin.so usr/lib/${DEB_HOST_MULTIARCH}/openvino/inference-plugins
+usr/deployment_tools/inference_engine/lib/*/libMKLDNNPlugin.so usr/lib/${DEB_HOST_MULTIARCH}/openvino/inference-plugins
+usr/deployment_tools/inference_engine/lib/*/libMultiDevicePlugin.so usr/lib/${DEB_HOST_MULTIARCH}/openvino/inference-plugins
+usr/lib/*/openvino/inference-plugins
