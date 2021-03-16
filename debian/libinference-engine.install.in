@@ -1,4 +1,5 @@
 #XXX: separate package for ngraph?
+usr/lib/*/libonnx_importer.so
 usr/lib/*/libngraph.so
 usr/deployment_tools/inference_engine/lib/*/libinference*.so usr/lib/${DEB_HOST_MULTIARCH}
 #XXX: separate package for plugins?

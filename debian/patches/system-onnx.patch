@@ -1,0 +1,25 @@
+diff --git a/ngraph/CMakeLists.txt b/ngraph/CMakeLists.txt
+index 99f32a6..b0991d6 100644
+--- a/ngraph/CMakeLists.txt
++++ b/ngraph/CMakeLists.txt
+@@ -127,6 +127,7 @@ option(NGRAPH_USE_PROTOBUF_LITE "Compiles and links with protobuf-lite" FALSE)
+ 
+ if (NGRAPH_ONNX_IMPORT_ENABLE)
+     option(NGRAPH_USE_SYSTEM_PROTOBUF "Use system provided Protobuf shared object" FALSE)
++    option(NGRAPH_USE_SYSTEM_ONNX "Use system provided onnx shared object" FALSE)
+ endif()
+ 
+ if (NGRAPH_UNIT_TEST_ENABLE)
+@@ -474,7 +475,11 @@ if (NGRAPH_ONNX_IMPORT_ENABLE)
+     else()
+         find_package(Protobuf 2.6.1 REQUIRED)
+     endif()
+-    include(cmake/external_onnx.cmake)
++    if (NOT NGRAPH_USE_SYSTEM_ONNX)
++        include(cmake/external_onnx.cmake)
++    else()
++        find_package(ONNX 1.7.0 REQUIRED)
++    endif()
+     if (TARGET ext_protobuf)
+         add_dependencies(onnx ext_protobuf)
+     endif()
