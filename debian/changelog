@@ -1,3 +1,9 @@
+openvino (2021.2+repack1-0pexip2) pexip; urgency=medium
+
+  * Enable ONNX support
+
+ -- John-Mark Bell <jmb@pexip.com>  Tue, 16 Mar 2021 18:46:07 +0000
+
 openvino (2021.2+repack1-0pexip1) pexip; urgency=medium
 
   * Initial release
