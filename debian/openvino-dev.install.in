@@ -3,8 +3,8 @@ usr/deployment_tools/inference_engine/include/* usr/include/openvino
 #XXX: these may need rewriting to cope with global install locations
 usr/deployment_tools/inference_engine/share/*.cmake usr/share/cmake/Modules
 #XXX: usr/lib/pkgconfig/*.pc ?
-usr/lib/*/cmake/*/*.cmake
-usr/lib/*/libpugixml.a
+#usr/lib/*/cmake/*/*.cmake
+#usr/lib/*/libpugixml.a
 usr/lib/libade.a usr/lib/${DEB_HOST_MULTIARCH}
 usr/share/ade/*.cmake usr/share/cmake/Modules
 usr/cmake/*.cmake usr/share/cmake/Modules
