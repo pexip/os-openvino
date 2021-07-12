@@ -1,2 +1,3 @@
 disable-docs.patch
 system-onnx.patch
+remove-stb.patch

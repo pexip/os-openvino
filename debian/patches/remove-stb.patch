@@ -1,0 +1,17 @@
+diff --git a/inference-engine/thirdparty/CMakeLists.txt b/inference-engine/thirdparty/CMakeLists.txt
+index fa2a4d0..4e87ca7 100644
+--- a/inference-engine/thirdparty/CMakeLists.txt
++++ b/inference-engine/thirdparty/CMakeLists.txt
+@@ -61,11 +61,10 @@ else()
+     target_include_directories(pugixml INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/pugixml/src>")
+ endif()
+ 
+-add_subdirectory(stb_lib)
+ add_subdirectory(ade)
+ add_subdirectory(fluid/modules/gapi)
+ 
+-set_target_properties(ade fluid stb_image PROPERTIES FOLDER thirdparty)
++set_target_properties(ade fluid PROPERTIES FOLDER thirdparty)
+ 
+ # developer package
+ 
