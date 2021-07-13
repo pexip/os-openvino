@@ -42,10 +42,8 @@ override_dh_auto_clean:
 
 override_dh_auto_install:
 	dh_auto_install
-	mkdir -p debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins
-	sed -e "s|location=\"|location=\"/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins/|g" \
-	  <$$(ls debian/tmp/usr/deployment_tools/inference_engine/lib/*/plugins.xml) \
-	  >debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins/plugins.xml
+	sed -i -e "s|location=\"|location=\"/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins/|g" \
+	  $$(ls debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/openvino/inference-plugins/plugins.xml)
 	for file in $(DOT_IN_FILES); \
 	do \
 	  sed -e "s|\$${DEB_HOST_MULTIARCH}|$(DEB_HOST_MULTIARCH)|g" \
