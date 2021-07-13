@@ -2,6 +2,7 @@ openvino (2021.2+repack1-0pexip3) pexip; urgency=medium
 
   * Use system pugixml
   * Drop stb: not used
+  * Use system ade
 
  -- John-Mark Bell <jmb@pexip.com>  Mon, 12 Jul 2021 17:40:34 +0100
 

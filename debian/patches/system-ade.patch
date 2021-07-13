@@ -1,0 +1,41 @@
+diff --git a/inference-engine/cmake/features_ie.cmake b/inference-engine/cmake/features_ie.cmake
+index 2c2c891..7476fb2 100644
+--- a/inference-engine/cmake/features_ie.cmake
++++ b/inference-engine/cmake/features_ie.cmake
+@@ -113,3 +113,5 @@ set(IE_EXTRA_MODULES "" CACHE STRING "Extra paths for extra modules to include i
+ ie_dependent_option(ENABLE_TBB_RELEASE_ONLY "Only Release TBB libraries are linked to the Inference Engine binaries" ON "THREADING MATCHES TBB;LINUX" OFF)
+ 
+ ie_option (USE_SYSTEM_PUGIXML "use the system copy of pugixml" OFF)
++
++ie_option(USE_SYSTEM_ADE "use the system copy of ade" OFF)
+diff --git a/inference-engine/thirdparty/CMakeLists.txt b/inference-engine/thirdparty/CMakeLists.txt
+index fa2a4d0..6689b69 100644
+--- a/inference-engine/thirdparty/CMakeLists.txt
++++ b/inference-engine/thirdparty/CMakeLists.txt
+@@ -61,14 +62,23 @@ else()
+     target_include_directories(pugixml INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/pugixml/src>")
+ endif()
+ 
+-add_subdirectory(ade)
++if (USE_SYSTEM_ADE)
++    find_package(ade REQUIRED)
++else()
++    add_subdirectory(ade)
++    set_target_properties(ade PROPERTIES folder thirdparty)
++endif()
+ add_subdirectory(fluid/modules/gapi)
+ 
+-set_target_properties(ade fluid PROPERTIES FOLDER thirdparty)
++set_target_properties(fluid PROPERTIES FOLDER thirdparty)
+ 
+ # developer package
+ 
+-ie_developer_export_targets(ade fluid)
++ie_developer_export_targets(fluid)
++
++if (NOT USE_SYSTEM_ADE)
++    ie_developer_export_targets(ade)
++endif()
+ 
+ if (NOT USE_SYSTEM_PUGIXML)
+     set_target_properties(pugixml PROPERTIES FOLDER thirdparty)

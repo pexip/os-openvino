@@ -7,6 +7,7 @@ Build-Depends:
  cmake (>= 3.13),
  debhelper (>> 10~),
  git,
+ libade-dev,
  libonnx-dev,
  libprotobuf-dev,
  libpugixml-dev,
