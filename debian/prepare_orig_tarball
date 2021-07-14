@@ -1,0 +1,54 @@
+#!/bin/sh
+
+set -e
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <tag>" >&2
+  exit 1
+fi
+
+TAG=$1
+
+HERE=$(pwd)
+
+tmpd=$(mktemp -d)
+
+cleanup() {
+  cd ${HERE}
+  rm -fr ${tmpd}
+}
+
+trap cleanup 0
+
+cd ${tmpd}
+
+git clone https://github.com/openvinotoolkit/openvino.git
+
+cd openvino
+
+git checkout ${TAG}
+
+git submodule init
+git submodule update --recursive --init
+
+# Disable ade: we use the system one
+git submodule deinit inference-engine/thirdparty/ade
+
+# Prevent export of vendored third-party sources we don't want
+cat >.git/info/attributes <<EOF
+.gitattributes export-ignore
+inference-engine/thirdparty/ade export-ignore
+inference-engine/thirdparty/clDNN export-ignore
+inference-engine/thirdparty/movidius export-ignore
+inference-engine/thirdparty/pugixml export-ignore
+inference-engine/thirdparty/stb_lib export-ignore
+EOF
+
+git archive --prefix=openvino-${TAG}/ -o openvino_${TAG}.tar HEAD
+
+git submodule foreach --recursive \
+    "git archive --prefix=openvino-${TAG}/\$displaypath/ -o wibble.tar HEAD && tar -A --file=${tmpd}/openvino/openvino_${TAG}.tar wibble.tar && rm -f wibble.tar"
+
+gzip openvino_${TAG}.tar
+
+mv openvino_${TAG}.tar.gz ${HERE}
