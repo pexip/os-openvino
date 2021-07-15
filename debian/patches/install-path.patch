@@ -24,7 +24,7 @@ index f012a03..3c8cde7 100644
  ie_cpack_add_component(core REQUIRED DEPENDS ${core_components})
  
 -install(DIRECTORY "${IE_MAIN_SOURCE_DIR}/include" DESTINATION ${IE_CPACK_IE_DIR}
-+install(DIRECTORY "${IE_MAIN_SOURCE_DIR}/include" DESTINATION "include/openvino"
++install(DIRECTORY "${IE_MAIN_SOURCE_DIR}/include/" DESTINATION "include/openvino"
          COMPONENT core)
  install(TARGETS ${TARGET_NAME}
          RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH} COMPONENT core
