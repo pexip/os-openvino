@@ -6,11 +6,19 @@ License: Apache-2.0
 
 Files: *
 Copyright:
- 2018-2020 OpenVINO Authors
+ 2016-2020 Intel Corporation
 License: Apache-2.0
 
 Files: debian/*
 Copyright: 2021 Pexip AS
+License: Apache-2.0
+
+Files:
+  inference-engine/ie_bridges/python/cmake/FindCython.cmake
+  inference-engine/ie_bridges/python/cmake/UseCython.cmake
+Copyright:
+  2011 Kitware, Inc.
+  2018-2020 Intel Corporation
 License: Apache-2.0
 
 Files: inference-engine/samples/thirdparty/gflags/*
@@ -27,6 +35,22 @@ Files: inference-engine/tests/ie_test_utils/common_test_utils/gtest/*
 Copyright:
   2006-2008 Google Inc.
 License: BSD-3-Clause
+
+Files: inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/*
+Copyright:
+  2007-2008 Google Inc.
+License: Apache-2.0
+
+Files:
+  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/ast.py
+  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/gmock_class_test.py
+  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/keywords.py
+  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/tokenize.py
+  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/utils.py
+Copyright:
+  2007-2009 Google Inc.
+  2007-2009 Neal Norwitz
+License: Apache-2.0
 
 Files: inference-engine/thirdparty/fluid/*
 Copyright:
@@ -49,6 +73,7 @@ License: Apache-2.0
 Files: inference-engine/thirdparty/mkl-dnn/src/cpu/xbyak/*
 Copyright:
   2007 MITSUNARI Shigeo
+  2016-2019 Intel Corporation
 License: BSD-3-Clause
 
 Files: inference-engine/thirdparty/mkl-dnn/src/cpu/jit_utils/jitprofiling/*
@@ -58,7 +83,7 @@ License: BSD-3-Clause
 
 Files: inference-engine/thirdparty/mkl-dnn/tests/gtests/gtest/*
 Copyright:
-  2005-2015 Google Inc.
+  1999-2017 Google Inc.
 License: BSD-3-Clause
 
 Files:
@@ -66,22 +91,30 @@ Files:
   inference-engine/thirdparty/ocv/opencv_hal_avx512.hpp
   inference-engine/thirdparty/ocv/opencv_hal_intrin_forward.hpp
 Copyright:
-   2000-2020 Intel Corporation, all rights reserved.
-   2009-2011 Willow Garage Inc., all rights reserved.
-   2009-2016 NVIDIA Corporation, all rights reserved.
-   2010-2013 Advanced Micro Devices, Inc., all rights reserved.
-   2015-2016 OpenCV Foundation, all rights reserved.
-   2015-2016 Itseez Inc., all rights reserved.
-   2019-2020 Xperience AI, all rights reserved.
+   2000-2020 Intel Corporation
+   2009-2011 Willow Garage Inc.
+   2009-2016 NVIDIA Corporation
+   2010-2013 Advanced Micro Devices, Inc.
+   2015-2016 OpenCV Foundation
+   2015-2016 Itseez Inc.
+   2019-2020 Xperience AI
 License: Apache-2.0
 
 Files: inference-engine/thirdparty/ocv/*
 Copyright:
-  2000-2008 Intel Corporation, all rights reserved.
-  2009 Willow Garage Inc., all rights reserved.
-  2013 OpenCV Foundation, all rights reserved.
-  2015 Itseez Inc., all rights reserved.
+  2000-2008 Intel Corporation
+  2009 Willow Garage Inc.
+  2013 OpenCV Foundation
+  2015 Itseez Inc.
 License: BSD-3-Clause
+
+Files:
+  ngraph/core/src/type/bfloat16.cpp
+  ngraph/core/src/type/float16.cpp
+Copyright:
+  2016 The TensorFlow Authors.
+  2017-2020 Intel Corporation
+License: Apache-2.0
 
 License: Apache-2.0
  Licensed under the Apache License, Version 2.0 (the "License"); you may not use
