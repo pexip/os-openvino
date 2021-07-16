@@ -4,6 +4,10 @@ openvino (2021.2+repack2-0pexip1) pexip; urgency=medium
   * Use system pugixml
   * Drop stb: not used
   * Use system ade
+  * Correct installation paths
+  * Make copyright file more complete
+  * Fix system TBB discovery
+  * Build-Depend on shellcheck
 
  -- John-Mark Bell <jmb@pexip.com>  Mon, 12 Jul 2021 17:40:34 +0100
 
