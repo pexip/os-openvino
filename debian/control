@@ -12,7 +12,8 @@ Build-Depends:
  libprotobuf-dev,
  libpugixml-dev,
  libtbb-dev,
- protobuf-compiler
+ protobuf-compiler,
+ shellcheck
 Homepage: https://01.org/openvinotoolkit
 Vcs-Browser: https://github.com/openvinotoolkit/openvino
 Vcs-Git: https://github.com/openvinotoolkit/openvino.git
