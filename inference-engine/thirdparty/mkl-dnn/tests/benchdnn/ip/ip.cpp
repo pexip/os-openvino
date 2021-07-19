@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2018 Intel Corporation
+* Copyright 2017-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,307 +14,418 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <float.h>
 #include <math.h>
 #include <random>
+#include <stdio.h>
+#include <stdlib.h>
 
-#include "mkldnn.h"
+#include "dnnl.h"
 
-#include "src/common/mkldnn_thread.hpp"
+#include "tests/test_thread.hpp"
 
-#include "mkldnn_common.hpp"
-#include "mkldnn_memory.hpp"
+#include "dnnl_common.hpp"
+#include "dnnl_memory.hpp"
 
+#include "binary/binary.hpp"
 #include "ip/ip.hpp"
 
 namespace ip {
 
-inline bool is_3d(const prb_t *p) {
-    return p->id > 1;
-}
+static int init_pd(dnnl_engine_t engine, const prb_t *prb,
+        dnnl_primitive_desc_t &ippd, res_t *res, dir_t dir,
+        const_dnnl_primitive_desc_t hint) {
+    dnnl_inner_product_desc_t ipd;
+    dnnl_memory_desc_t src_d, wei_d, bia_d, dst_d;
 
-inline bool is_1d(const prb_t *p) {
-    return !is_3d(p) && p->ih == 1;
-}
+    dnnl_dims_t src_dims_0d = {prb->mb, prb->ic};
+    dnnl_dims_t src_dims_1d = {prb->mb, prb->ic, prb->iw};
+    dnnl_dims_t src_dims_2d = {prb->mb, prb->ic, prb->ih, prb->iw};
+    dnnl_dims_t src_dims_3d = {prb->mb, prb->ic, prb->id, prb->ih, prb->iw};
+    dnnl_dims_t wei_dims_0d = {prb->oc, prb->ic};
+    dnnl_dims_t wei_dims_1d = {prb->oc, prb->ic, prb->iw};
+    dnnl_dims_t wei_dims_2d = {prb->oc, prb->ic, prb->ih, prb->iw};
+    dnnl_dims_t wei_dims_3d = {prb->oc, prb->ic, prb->id, prb->ih, prb->iw};
+    dnnl_dims_t bia_dims = {prb->oc};
+    dnnl_dims_t dst_dims = {prb->mb, prb->oc};
 
-inline int init_pd(const prb_t *p, mkldnn_inner_product_desc_t &ipd,
-        mkldnn_primitive_desc_t &ippd, res_t *r) {
-    mkldnn_memory_desc_t src_d, wei_d, bia_d, dst_d;
+    dnnl_dim_t *src_dims = prb->ndims == 5
+            ? src_dims_3d
+            : prb->ndims == 4 ? src_dims_2d
+                              : prb->ndims == 3 ? src_dims_1d : src_dims_0d;
 
-    int ndims = is_3d(p) ? 5 : is_1d(p) ? 3 : 4;
-    mkldnn_dims_t src_1d_dims = {p->mb, p->ic, p->iw};
-    mkldnn_dims_t src_2d_dims = {p->mb, p->ic, p->ih, p->iw};
-    mkldnn_dims_t src_3d_dims = {p->mb, p->ic, p->id, p->ih, p->iw};
-    mkldnn_dims_t wei_1d_dims = {p->oc, p->ic, p->iw};
-    mkldnn_dims_t wei_2d_dims = {p->oc, p->ic, p->ih, p->iw};
-    mkldnn_dims_t wei_3d_dims = {p->oc, p->ic, p->id, p->ih, p->iw};
-    mkldnn_dims_t bia_dims = {p->oc};
-    mkldnn_dims_t dst_dims = {p->mb, p->oc};
+    dnnl_dim_t *wei_dims = prb->ndims == 5
+            ? wei_dims_3d
+            : prb->ndims == 4 ? wei_dims_2d
+                              : prb->ndims == 3 ? wei_dims_1d : wei_dims_0d;
 
-    DNN_SAFE(mkldnn_memory_desc_init(&src_d, ndims,
-        is_3d(p) ? src_3d_dims : is_1d(p) ? src_1d_dims : src_2d_dims,
-        p->cfg[SRC].dt, mkldnn_any), WARN);
-    DNN_SAFE(mkldnn_memory_desc_init(&wei_d, ndims,
-        is_3d(p) ? wei_3d_dims : is_1d(p) ? wei_1d_dims : wei_2d_dims,
-            p->cfg[WEI].dt, mkldnn_any), WARN);
-    DNN_SAFE(mkldnn_memory_desc_init(&bia_d, 1, bia_dims, p->cfg[BIA].dt, mkldnn_any), WARN);
-    DNN_SAFE(mkldnn_memory_desc_init(&dst_d, 2, dst_dims, p->cfg[DST].dt, mkldnn_any), WARN);
+    SAFE(init_md(&src_d, prb->ndims, src_dims, prb->cfg[SRC].dt, prb->stag),
+            CRIT);
+    SAFE(init_md(&wei_d, prb->ndims, wei_dims, prb->cfg[WEI].dt, prb->wtag),
+            CRIT);
+    DNN_SAFE(dnnl_memory_desc_init_by_tag(&bia_d, 1, bia_dims, prb->cfg[BIA].dt,
+                     dnnl_format_tag_any),
+            WARN);
+    SAFE(init_md(&dst_d, 2, dst_dims, prb->cfg[DST].dt, prb->dtag), CRIT);
 
-    switch (p->dir) {
-    case FWD_D: case FWD_B:
-        DNN_SAFE(mkldnn_inner_product_forward_desc_init(&ipd, mkldnn_forward,
-                    &src_d, &wei_d, p->dir == FWD_D ? NULL : &bia_d, &dst_d),
-                WARN);
-        break;
-    case BWD_D:
-        DNN_SAFE(mkldnn_inner_product_backward_data_desc_init(&ipd, &src_d,
-                    &wei_d, &dst_d), WARN);
-        break;
-    case BWD_W: case BWD_WB:
-        DNN_SAFE(mkldnn_inner_product_backward_weights_desc_init(&ipd, &src_d,
-                    &wei_d, p->dir == BWD_W ? NULL : &bia_d, &dst_d), WARN);
-        break;
-    default: DNN_SAFE(mkldnn_invalid_arguments, CRIT);
+    switch (prb->dir) {
+        case FWD_D:
+        case FWD_B:
+        case FWD_I:
+            DNN_SAFE(dnnl_inner_product_forward_desc_init(&ipd,
+                             prb->dir == FWD_I ? dnnl_forward_inference
+                                               : dnnl_forward_training,
+                             &src_d, &wei_d,
+                             prb->dir == FWD_B ? &bia_d : nullptr, &dst_d),
+                    WARN);
+            break;
+        case BWD_D:
+            DNN_SAFE(dnnl_inner_product_backward_data_desc_init(
+                             &ipd, &src_d, &wei_d, &dst_d),
+                    WARN);
+            break;
+        case BWD_W:
+        case BWD_WB:
+            DNN_SAFE(dnnl_inner_product_backward_weights_desc_init(&ipd, &src_d,
+                             &wei_d, prb->dir == BWD_W ? nullptr : &bia_d,
+                             &dst_d),
+                    WARN);
+            break;
+        default: DNN_SAFE(dnnl_invalid_arguments, CRIT);
     }
 
-    DNN_SAFE(ipd.accum_data_type == p->cfg[ACC].dt
-            ? mkldnn_success : mkldnn_unimplemented, CRIT);
+    DNN_SAFE(ipd.accum_data_type == prb->cfg[ACC].dt ? dnnl_success
+                                                     : dnnl_unimplemented,
+            CRIT);
 
-    auto mkldnn_attr = create_mkldnn_attr(p->attr, p->oc, p->scales);
+    attr_args_t attr_args;
+    attr_args.prepare_output_scales(prb->attr, prb->scales, prb->oc);
+    attr_args.prepare_binary_post_op_mds(prb->attr, 2, dst_dims);
+    auto dnnl_attr = create_dnnl_attr(prb->attr, attr_args);
 
-    mkldnn_status_t init_status = mkldnn_success;
-    init_status = mkldnn_primitive_desc_create_v2(&ippd, &ipd, mkldnn_attr,
-            engine, NULL);
+    dnnl_status_t init_status = dnnl_success;
+    init_status = dnnl_primitive_desc_create(
+            &ippd, &ipd, dnnl_attr, engine, nullptr);
 
-    mkldnn_primitive_attr_destroy(mkldnn_attr);
+    dnnl_primitive_attr_destroy(dnnl_attr);
 
-    if (init_status == mkldnn_unimplemented)
-        return r->state = UNIMPLEMENTED, OK;
+    if (init_status == dnnl_unimplemented)
+        return res->state = UNIMPLEMENTED, OK;
     else
         SAFE(init_status, WARN);
 
-    auto q = [=](mkldnn_query_t query, int index = 0) {
-        return *mkldnn_primitive_desc_query_memory_d(
-                mkldnn_primitive_desc_query_pd(ippd, query, index));
-    };
-
-    if (p->dir == BWD_D)
-        ipd.diff_src_desc = q(mkldnn_query_diff_src_pd);
-    else
-        ipd.src_desc = q(mkldnn_query_src_pd);
-
-    if (p->dir & FLAG_WEI)
-        ipd.diff_weights_desc = q(mkldnn_query_diff_weights_pd);
-    else
-        ipd.weights_desc = q(mkldnn_query_weights_pd);
-
-    if (p->dir & FLAG_BIA) {
-        if (p->dir & FLAG_BWD)
-            ipd.diff_bias_desc = q(mkldnn_query_diff_weights_pd, 1);
-        else
-            ipd.bias_desc = q(mkldnn_query_weights_pd, 1);
+    res->impl_name = query_impl_info(ippd);
+    if (maybe_skip(res->impl_name)) {
+        BENCHDNN_PRINT(2, "SKIPPED: oneDNN implementation: %s\n",
+                res->impl_name.c_str());
+        DNN_SAFE(dnnl_primitive_desc_destroy(ippd), WARN);
+        return res->state = SKIPPED, res->reason = SKIP_IMPL_HIT, OK;
+    } else {
+        BENCHDNN_PRINT(
+                5, "oneDNN implementation: %s\n", res->impl_name.c_str());
     }
-
-    if (p->dir & FLAG_BWD)
-        ipd.diff_dst_desc = q(mkldnn_query_diff_dst_pd);
-    else
-        ipd.dst_desc = q(mkldnn_query_dst_pd);
 
     return OK;
 }
 
-inline int compare_dat(const prb_t *p, data_kind_t kind, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp, res_t *r) {
-    size_t nelems = mem_dt.nelems();
-    int non_zero = 0;
+inline int compare_dat(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res) {
+    const auto nelems = mem_dt.nelems();
+    if (nelems == 0) return res->state = PASSED, OK;
+
+    res->total = nelems;
+
+    int64_t non_zero = 0;
     const char *skind = data_kind2str(kind);
 
-    r->errors = 0;
-    r->total = nelems;
+    for (int64_t i = 0; i < nelems; ++i) {
+        const float dt = mem_dt.get_elem(i);
+        const float fp0 = mem_fp.get_elem(i);
+        const float fp = round_to_nearest_representable(prb->cfg[kind].dt, fp0);
 
-    for (size_t i = 0; i < nelems; ++i) {
-        float dt = ((float*)mem_dt)[i];
-        float fp0 = ((float *)mem_fp)[i];
+        const float diff = fabsf(fp - dt);
+        const float rel_diff = diff / (fabsf(fp) > FLT_MIN ? fabsf(fp) : 1);
+        const bool ok
+                = (fabs(fp) > 1e-5 ? rel_diff : diff) <= prb->cfg[kind].eps;
 
-        float fp = fp0;
-        if (p->cfg[kind].dt != mkldnn_f32 && p->cfg[kind].dt != mkldnn_bf16) {
-            using R = attr_t::round_mode_t;
-            switch (p->attr.irmode) {
-                case R::DOWN: fp = floorf(fp0); break;
-                case R::NEAREST: fp = nearbyintf(fp0); break;
-                default:
-                    return UNTESTED;
-            }
-        }
+        res->errors += !ok;
 
-        float diff = fabsf(fp - dt);
-        float rel_diff = diff / (fabsf(fp) > FLT_MIN ? fabsf(fp) : 1);
-
-        bool ok = true;
-        if (fp < p->cfg[kind].min)
-            ok = dt == p->cfg[kind].min;
-        else if (fp > p->cfg[kind].max)
-            ok = dt == p->cfg[kind].max;
-        else
-            ok = (fabs(fp) > 1e-5 ? rel_diff : diff) <= p->cfg[kind].eps;
-
-        if (!ok) {
-            r->errors++;
-            if (r->errors < 10 || verbose >= 10) {
-                print(0, "[%4lu][%s]"
-                         "fp:%8g fp0:%8g dt:%8g diff:%8g rdiff:%8g\n",
-                        (unsigned long)i, skind, fp, fp0, dt, diff, rel_diff);
-            }
+        const bool dump = false || (!ok && (res->errors < 10 || verbose >= 10))
+                || (verbose >= 50 && i < 30) || (verbose >= 99);
+        if (dump) {
+            BENCHDNN_PRINT(0,
+                    "[%4ld][%s]"
+                    "fp:%8g fp0:%8g dt:%8g diff:%8g rdiff:%8g\n",
+                    (long)i, skind, fp, fp0, dt, diff, rel_diff);
         }
         non_zero += fp != 0;
     }
 
-    const double trust_nz = (double)non_zero / r->total;
+    const double trust_nz = (double)non_zero / res->total;
     bool no_trust = trust_nz < 0.1;
     if (no_trust) {
-        r->state = MISTRUSTED;
+        res->state = MISTRUSTED;
         const char *skind = data_kind2str(kind);
-        print(0, "@@@ [%s] test-bug: trust is too low."
-                 " Nonzeros in output: %.2f\n",
+        BENCHDNN_PRINT(0,
+                "@@@ [%s] test-bug: trust is too low."
+                " Nonzeros in output: %.2f\n",
                 skind, trust_nz);
     }
 
-    if (r->errors)
-        r->state = FAILED;
+    if (res->errors) res->state = FAILED;
 
-    if (r->state == UNTESTED)
-        r->state = PASSED; /* optimism */
+    if (res->state == UNTESTED) res->state = PASSED; /* optimism */
 
-    return r->state == FAILED ? FAIL : OK;
+    return res->state == FAILED ? FAIL : OK;
 }
 
-int fill_data(data_kind_t kind, const prb_t *p, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp, res_t *r) {
-    dnn_mem_t mem_00(
-            mem_dt.md_, mkldnn_f32, get_default_format(mem_fp.md_.ndims, kind));
+int fill_src(
+        const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+    const bool need_extra_mem = mem_dt.dt() != mem_fp.dt();
+    dnn_mem_t extra_mem;
+    if (need_extra_mem) {
+        const auto tag = tag::abx;
+        extra_mem = dnn_mem_t(mem_dt.md_, dnnl_f32, tag, get_test_engine());
+    }
+    dnn_mem_t &mem_00 = need_extra_mem ? extra_mem : mem_fp;
 
-    const size_t nelems = mem_dt.nelems();
-    assert(mem_dt.nelems() == mem_fp.nelems());
+    const auto &c = prb->cfg[SRC];
+    const int range = c.f_max - c.f_min + 1;
 
-    const auto &c = p->cfg[kind];
+    dnnl::impl::parallel_nd(prb->mb, prb->ic, prb->id, prb->ih, prb->iw,
+            [&](int mb, int ic, int id, int ih, int iw) {
+                const int gen
+                        = 101 * id + 103 * ih + 107 * iw + 109 * mb + 113 * ic;
+                const bool non_base = flip_coin(gen, c.f_sparsity);
+                const float value
+                        = non_base ? c.f_min + gen * 1 % range : c.f_base;
 
-    mkldnn::impl::parallel(0, [&](int ithr, int nthr) {
-        size_t chunk_size = (nelems + nthr - 1) / nthr;
-        size_t idx_start = ithr * chunk_size;
-        size_t idx_end = MIN2(idx_start + chunk_size, nelems);
-        std::minstd_rand msr;
-        std::uniform_int_distribution<> gen(
-                c.f_min, c.f_max);
-        msr.discard(idx_start);
-        for (size_t idx = idx_start; idx < idx_end; ++idx) {
-            auto val = (float)gen(msr) * c.f_scale;
-            mem_00.set_elem(idx, val);
-        }
-    });
+                ((float *)mem_00)[src_off_f(prb, mb, ic, id, ih, iw)] = value;
+            });
 
     SAFE(mem_dt.reorder(mem_00), WARN);
-    SAFE(mem_fp.reorder(mem_dt), WARN);
+    if (need_extra_mem) { SAFE(mem_fp.reorder(mem_dt), WARN); }
+
     return OK;
 }
 
-int doit(const prb_t *p, res_t *r) {
-    mkldnn_inner_product_desc_t ipd;
-    mkldnn_primitive_desc_t ippd;
-    mkldnn_primitive_t ip;
+int fill_wei(
+        const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+    const bool s8_s8
+            = prb->cfg[WEI].dt == dnnl_s8 && prb->cfg[SRC].dt == dnnl_s8;
+    const bool diff_data_type = mem_dt.dt() != mem_fp.dt();
+    const bool check_reorder = diff_data_type && !s8_s8;
 
-    SAFE(init_pd(p, ipd, ippd, r), WARN);
-    if (r->state == SKIPPED || r->state == UNIMPLEMENTED)
-        return OK;
+    dnn_mem_t extra_mem;
+    if (check_reorder) {
+        const auto tag = tag::abx;
+        extra_mem = dnn_mem_t(mem_dt.md_, dnnl_f32, tag, get_test_engine());
+    }
+    dnn_mem_t &mem_00 = check_reorder ? extra_mem : mem_fp;
 
-    auto &src_dt_d = p->dir == BWD_D ? ipd.diff_src_desc : ipd.src_desc;
-    auto &wei_dt_d = p->dir & FLAG_WEI ? ipd.diff_weights_desc : ipd.weights_desc;
-    auto &bia_dt_d = p->dir & FLAG_BWD ? ipd.diff_bias_desc : ipd.bias_desc;
-    auto &dst_dt_d = p->dir & FLAG_BWD ? ipd.diff_dst_desc: ipd.dst_desc;
+    const auto &c = prb->cfg[WEI];
+    const int range = c.f_max - c.f_min + 1;
 
-    const auto fp = mkldnn_f32;
-    dnn_mem_t src_dt(src_dt_d, p->cfg[SRC].dt);
-    dnn_mem_t wei_dt(wei_dt_d, p->cfg[WEI].dt);
-    dnn_mem_t dst_dt(dst_dt_d, p->cfg[DST].dt);
-    dnn_mem_t bia_dt = p->dir & FLAG_BIA
-        ? dnn_mem_t(bia_dt_d, p->cfg[BIA].dt) : dnn_mem_t();
+    dnnl::impl::parallel_nd(prb->oc, prb->ic, prb->id, prb->ih, prb->iw,
+            [&](int oc, int ic, int kd, int kh, int kw) {
+                const int gen
+                        = 127 * kd + 131 * kh + 137 * kw + 139 * oc + 149 * ic;
+                const bool non_base = flip_coin(gen, c.f_sparsity);
+                const float value
+                        = non_base ? c.f_min + gen * 1 % range : c.f_base;
+                ((float *)mem_00)[wei_off_f(prb, oc, ic, kd, kh, kw)] = value;
+            });
 
-    auto src_format
-            = is_3d(p) ? mkldnn_ncdhw : is_1d(p) ? mkldnn_ncw : mkldnn_nchw;
-    auto wei_format
-            = is_3d(p) ? mkldnn_oidhw : is_1d(p) ? mkldnn_oiw : mkldnn_oihw;
-    dnn_mem_t src_fp(src_dt_d, fp, src_format);
-    dnn_mem_t wei_fp(wei_dt_d, fp, wei_format);
-    dnn_mem_t dst_fp(dst_dt_d, fp, mkldnn_nc);
-    dnn_mem_t bia_fp = p->dir & FLAG_BIA
-        ? dnn_mem_t(bia_dt_d, fp, mkldnn_x) : dnn_mem_t();
+    SAFE(mem_dt.reorder(mem_00), WARN);
+    if (check_reorder) { SAFE(mem_fp.reorder(mem_dt), WARN); }
 
-    SAFE(fill_data(SRC, p, src_dt, src_fp, r), WARN);
-    SAFE(fill_data(WEI, p, wei_dt, wei_fp, r), WARN);
-    SAFE(fill_data(DST, p, dst_dt, dst_fp, r), WARN);
-    if (p->dir & FLAG_BIA)
-        SAFE(fill_data(BIA, p, bia_dt, bia_fp, r), WARN);
+    return OK;
+}
 
-    if (p->dir & FLAG_FWD) {
-        mkldnn_primitive_at_t inputs[3] = { {src_dt.p_, 0}, {wei_dt.p_, 0},
-            {p->dir & FLAG_BIA ? bia_dt.p_ : NULL, 0}
-        };
-        const_mkldnn_primitive_t outputs[] = { dst_dt.p_ };
-        DNN_SAFE(mkldnn_primitive_create(&ip, ippd, inputs, outputs), WARN);
-        SAFE(execute(ip), WARN);
+int fill_bia(
+        const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+    const bool need_extra_mem = mem_dt.dt() != mem_fp.dt();
+    dnn_mem_t extra_mem;
+    if (need_extra_mem)
+        extra_mem = dnn_mem_t(mem_dt.md_, dnnl_f32, tag::x, get_test_engine());
+    dnn_mem_t &mem_00 = need_extra_mem ? extra_mem : mem_fp;
+
+    const size_t nelems = mem_00.nelems();
+    if (nelems == 0) return OK;
+
+    const auto &c = prb->cfg[BIA];
+    const int range = c.f_max - c.f_min + 1;
+
+    for (size_t i = 0; i < nelems; ++i) {
+        const int gen = (int)(151 * i);
+        const bool non_base = flip_coin(gen, c.f_sparsity);
+        const float value = non_base ? c.f_min + gen * 1 % range : c.f_base;
+
+        ((float *)mem_00)[i] = value;
+    }
+
+    SAFE(mem_dt.reorder(mem_00), WARN);
+    if (need_extra_mem) { SAFE(mem_fp.reorder(mem_dt), WARN); }
+    return OK;
+}
+
+int fill_dst(
+        const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
+    const bool need_extra_mem = mem_dt.dt() != mem_fp.dt();
+    dnn_mem_t extra_mem;
+    if (need_extra_mem) {
+        const auto tag = tag::abx;
+        extra_mem = dnn_mem_t(mem_dt.md_, dnnl_f32, tag, get_test_engine());
+    }
+    dnn_mem_t &mem_00 = need_extra_mem ? extra_mem : mem_fp;
+
+    const auto &c = prb->cfg[DST];
+    const int range = c.f_max - c.f_min + 1;
+
+    dnnl::impl::parallel_nd(prb->mb, prb->oc, [&](int mb, int oc) {
+        const int gen = 173 * mb + 179 * oc;
+        const bool non_base = flip_coin(gen, c.f_sparsity);
+        const float value = non_base ? c.f_min + gen * 1 % range : c.f_base;
+
+        ((float *)mem_00)[dst_off_f(prb, mb, oc)] = value;
+    });
+
+    SAFE(mem_dt.reorder(mem_00), WARN);
+    if (need_extra_mem) { SAFE(mem_fp.reorder(mem_dt), WARN); }
+
+    return OK;
+}
+
+void check_known_skipped_case(const prb_t *prb, res_t *res) {
+    check_known_skipped_case_common(
+            {prb->cfg[SRC].dt, prb->cfg[WEI].dt, prb->cfg[DST].dt}, prb->dir,
+            res);
+    if (res->state == SKIPPED) return;
+
+    // TODO: temporary disable binary post-op on GPU
+    if (engine_tgt_kind == dnnl_gpu
+            && prb->attr.post_ops.binary_index() != -1) {
+        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+        return;
+    }
+}
+
+int doit(const prb_t *prb, res_t *res) {
+    if (bench_mode == LIST) return res->state = LISTED, OK;
+
+    check_known_skipped_case(prb, res);
+    if (res->state == SKIPPED) return OK;
+
+    dnnl_primitive_t ip {};
+    SAFE(init_prim(&ip, init_pd, prb, res), WARN);
+    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
+
+    const_dnnl_primitive_desc_t const_pd;
+    DNN_SAFE(dnnl_primitive_get_primitive_desc(ip, &const_pd), CRIT);
+
+    if (dnn_mem_t::check_mem_size(const_pd) != OK) {
+        DNN_SAFE_V(dnnl_primitive_destroy(ip));
+        return res->state = SKIPPED, res->reason = NOT_ENOUGH_RAM, OK;
+    }
+
+    const auto q = [&](int index = 0) -> const dnnl_memory_desc_t & {
+        return *dnnl_primitive_desc_query_md(
+                const_pd, dnnl_query_exec_arg_md, index);
+    };
+
+    const auto &src_md
+            = prb->dir == BWD_D ? q(DNNL_ARG_DIFF_SRC) : q(DNNL_ARG_SRC);
+    const auto &wei_md = prb->dir & FLAG_WEI ? q(DNNL_ARG_DIFF_WEIGHTS)
+                                             : q(DNNL_ARG_WEIGHTS);
+    const auto &bia_md
+            = prb->dir & FLAG_WEI ? q(DNNL_ARG_DIFF_BIAS) : q(DNNL_ARG_BIAS);
+    const auto &dst_md
+            = prb->dir & FLAG_BWD ? q(DNNL_ARG_DIFF_DST) : q(DNNL_ARG_DST);
+    const auto &scratchpad_md = q(DNNL_ARG_SCRATCHPAD);
+
+    const auto fp = dnnl_f32;
+    const auto src_tag = tag::abx;
+    const auto wei_tag = tag::abx;
+
+    const auto &test_engine = get_test_engine();
+
+    dnn_mem_t src_dt(src_md, test_engine);
+    dnn_mem_t wei_dt(wei_md, test_engine);
+    dnn_mem_t bia_dt(bia_md, test_engine);
+    dnn_mem_t dst_dt(dst_md, test_engine);
+    dnn_mem_t scratchpad_dt(scratchpad_md, test_engine);
+    std::vector<dnn_mem_t> binary_po_fp, binary_po_dt;
+    std::vector<int> binary_po_args;
+    SAFE(binary::setup_binary_po(
+                 const_pd, binary_po_args, binary_po_dt, binary_po_fp),
+            WARN);
+
+    dnn_mem_t src_fp(src_md, fp, src_tag, test_engine);
+    dnn_mem_t wei_fp(wei_md, fp, wei_tag, test_engine);
+    dnn_mem_t bia_fp(bia_md, fp, tag::x, test_engine);
+    dnn_mem_t dst_fp(dst_md, fp, tag::abx, test_engine);
+
+    SAFE(fill_src(prb, src_dt, src_fp, res), WARN);
+    SAFE(fill_wei(prb, wei_dt, wei_fp, res), WARN);
+    SAFE(fill_bia(prb, bia_dt, bia_fp, res), WARN);
+    SAFE(fill_dst(prb, dst_dt, dst_fp, res), WARN);
+
+    args_t args;
+
+    if (prb->dir & FLAG_FWD) {
+        args.set(DNNL_ARG_SRC, src_dt);
+        args.set(DNNL_ARG_WEIGHTS, wei_dt);
+        args.set(DNNL_ARG_BIAS, bia_dt);
+        args.set(DNNL_ARG_DST, dst_dt);
+        args.set(DNNL_ARG_SCRATCHPAD, scratchpad_dt);
+        args.set(binary_po_args, binary_po_dt);
+
+        SAFE(execute_and_wait(ip, args), WARN);
+
         if (bench_mode & CORR) {
-            compute_ref_fwd(p, src_fp, wei_fp, bia_fp, dst_fp);
-            dnn_mem_t dst(dst_dt, fp, mkldnn_nc);
-            SAFE(compare_dat(p, DST, dst, dst_fp, r), WARN);
+            compute_ref_fwd(test_engine, prb, src_fp, wei_fp, bia_fp,
+                    binary_po_fp, dst_fp);
+            dnn_mem_t dst(dst_dt, fp, tag::abx, test_engine);
+            SAFE(compare_dat(prb, DST, dst, dst_fp, res), WARN);
         }
-    } else if (p->dir == BWD_D) {
-        mkldnn_primitive_at_t inputs[3] = { {dst_dt.p_, 0}, {wei_dt.p_, 0}, };
-        const_mkldnn_primitive_t outputs[] = { src_dt.p_ };
-        DNN_SAFE(mkldnn_primitive_create(&ip, ippd, inputs, outputs), WARN);
-        SAFE(execute(ip), WARN);
+    } else if (prb->dir == BWD_D) {
+        args.set(DNNL_ARG_DIFF_DST, dst_dt);
+        args.set(DNNL_ARG_WEIGHTS, wei_dt);
+        args.set(DNNL_ARG_DIFF_SRC, src_dt);
+        args.set(DNNL_ARG_SCRATCHPAD, scratchpad_dt);
+
+        SAFE(execute_and_wait(ip, args), WARN);
+
         if (bench_mode & CORR) {
-            compute_ref_bwd_d(p, src_fp, wei_fp, dst_fp);
-            dnn_mem_t src(src_dt, fp, src_format);
-            SAFE(compare_dat(p, SRC, src, src_fp, r), WARN);
+            compute_ref_bwd_d(prb, src_fp, wei_fp, dst_fp);
+            dnn_mem_t src(src_dt, fp, src_tag, test_engine);
+            SAFE(compare_dat(prb, SRC, src, src_fp, res), WARN);
         }
-    } else if (p->dir & FLAG_BWD && p->dir & FLAG_WEI) {
-        mkldnn_primitive_at_t inputs[3] = { {src_dt.p_, 0}, {dst_dt.p_, 0}, };
-        const_mkldnn_primitive_t outputs[] = { wei_dt.p_,
-            p->dir & FLAG_BIA ? bia_dt.p_ : NULL,
-        };
-        DNN_SAFE(mkldnn_primitive_create(&ip, ippd, inputs, outputs), WARN);
-        SAFE(execute(ip), WARN);
+    } else if (prb->dir & FLAG_BWD && prb->dir & FLAG_WEI) {
+        args.set(DNNL_ARG_SRC, src_dt);
+        args.set(DNNL_ARG_DIFF_DST, dst_dt);
+        args.set(DNNL_ARG_DIFF_WEIGHTS, wei_dt);
+        args.set(DNNL_ARG_DIFF_BIAS, bia_dt);
+        args.set(DNNL_ARG_SCRATCHPAD, scratchpad_dt);
+
+        SAFE(execute_and_wait(ip, args), WARN);
+
         if (bench_mode & CORR) {
-            compute_ref_bwd_w(p, src_fp, wei_fp, bia_fp, dst_fp);
-            dnn_mem_t wei(wei_dt, fp, wei_format);
-            if (compare_dat(p, WEI, wei, wei_fp, r) != OK) return FAIL;
-            if (p->dir & FLAG_BIA) {
-                dnn_mem_t bia(bia_dt, fp, mkldnn_x);
-                SAFE(compare_dat(p, BIA, bia, bia_fp, r), WARN);
+            compute_ref_bwd_w(prb, src_fp, wei_fp, bia_fp, dst_fp);
+            dnn_mem_t wei(wei_dt, fp, wei_tag, test_engine);
+            if (compare_dat(prb, WEI, wei, wei_fp, res) != OK) return FAIL;
+            if (prb->dir & FLAG_BIA) {
+                dnn_mem_t bia(bia_dt, fp, tag::x, test_engine);
+                SAFE(compare_dat(prb, BIA, bia, bia_fp, res), WARN);
             }
         }
     }
 
-    if (bench_mode & PERF) {
-        auto &t = r->timer;
-        t.reset();
-        while (true) {
-            SAFE(execute(ip), WARN);
-            t.stamp();
-            const bool stop = false
-                || (fix_times_per_prb && t.times() >= fix_times_per_prb)
-                || (!fix_times_per_prb
-                        && t.total_ms() >= max_ms_per_prb
-                        && t.times() >= min_times_per_prb);
-            if (stop) break;
-        }
-    }
+    measure_perf(res->timer, ip, args);
 
-    DNN_SAFE(mkldnn_primitive_desc_destroy(ippd), CRIT);
-    DNN_SAFE(mkldnn_primitive_destroy(ip), CRIT);
+    DNN_SAFE_V(dnnl_primitive_destroy(ip));
 
     return OK;
 }
 
-}
+} // namespace ip

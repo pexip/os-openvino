@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2018 Intel Corporation
+# Copyright 2018-2020 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,27 +23,21 @@ endif()
 set(TBB_cmake_included true)
 include("cmake/Threading.cmake")
 
-if(NOT MKLDNN_THREADING STREQUAL "TBB")
+if(NOT "${DNNL_CPU_THREADING_RUNTIME}" MATCHES "^(TBB|TBB_AUTO)$")
     return()
 endif()
 
-if (NOT TBBROOT)
-    if(DEFINED ENV{TBBROOT})
-        set (TBBROOT $ENV{TBBROOT})
-    else()
-        message("FATAL_ERROR" "TBBROOT is unset")
-    endif()
+find_package_tbb(REQUIRED)
+if(TBB_FOUND)
+    include_directories(BEFORE SYSTEM  ${_tbb_include_dirs})
+    list(APPEND EXTRA_SHARED_LIBS ${TBB_IMPORTED_TARGETS})
+
+    # Print TBB location
+    get_filename_component(_tbb_root "${_tbb_include_dirs}" PATH)
+    get_filename_component(_tbb_root "${_tbb_root}" ABSOLUTE)
+    message(STATUS "TBB: ${_tbb_root}")
+
+    unset(_tbb_include_dirs)
+    unset(_tbb_root)
 endif()
 
-if(WIN32)
-    find_package(TBB REQUIRED tbb HINTS cmake/win)
-elseif(APPLE)
-    find_package(TBB REQUIRED tbb HINTS cmake/mac)
-elseif(UNIX)
-    find_package(TBB REQUIRED tbb HINTS cmake/lnx)
-endif()
-
-set_threading("TBB")
-list(APPEND EXTRA_SHARED_LIBS ${TBB_IMPORTED_TARGETS})
-
-message(STATUS "Intel(R) TBB: ${TBBROOT}")

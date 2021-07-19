@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2018 Intel Corporation
+* Copyright 2017-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,104 +14,99 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "mkldnn_thread.hpp"
+#include <cstring>
 
-#include "simple_concat.hpp"
+#include "common/dnnl_thread.hpp"
 
-namespace mkldnn {
+#include "cpu/simple_concat.hpp"
+
+namespace dnnl {
 namespace impl {
 namespace cpu {
 
 using namespace memory_tracking::names;
 
 template <data_type_t data_type>
-void simple_concat_t<data_type>::execute() const {
-    auto scratchpad = this->scratchpad();
+status_t simple_concat_t<data_type>::execute(const exec_ctx_t &ctx) const {
+    auto scratchpad = ctx.get_scratchpad_grantor();
     auto iptrs = scratchpad.template get<const data_t *>(key_concat_iptrs);
     auto optrs = scratchpad.template get<data_t *>(key_concat_optrs);
-    auto nelems_to_copy = scratchpad.template get<size_t>(key_concat_nelems);
+    auto nelems_to_copy = scratchpad.template get<dim_t>(key_concat_nelems);
     auto is = scratchpad.template get<strides_t>(key_concat_istrides);
 
     const int num_arrs = pd()->n_inputs();
-    const ptrdiff_t *perm = pd()->perm_, *iperm = pd()->iperm_;
+    const int *perm = pd()->perm_, *iperm = pd()->iperm_;
     const int concat_dim = pd()->concat_dim();
-    auto o_base_ptr = reinterpret_cast<data_t *>(this->memory());
+    auto o_base_ptr = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
 
     for (int a = 0; a < num_arrs; ++a) {
-        const memory_desc_wrapper i_d(pd()->src_pd(a));
-        const memory_desc_wrapper o_d(pd()->src_image_pd(a));
+        const memory_desc_wrapper i_d(pd()->src_md(a));
+        const memory_desc_wrapper o_d(pd()->src_image_md(a));
 
-        iptrs[a] = reinterpret_cast<const data_t *>(
-                this->input_memory(a)) + i_d.blk_off(0);
+        iptrs[a] = CTX_IN_MEM(const data_t *, DNNL_ARG_MULTIPLE_SRC + a)
+                + i_d.blk_off(0);
         optrs[a] = o_base_ptr + o_d.blk_off(0);
         nelems_to_copy[a] = pd()->nelems_to_concat(i_d);
-        for (int i = 0; i < TENSOR_MAX_DIMS; i++) {
+        for (int i = 0; i < DNNL_MAX_NDIMS; i++) {
             if (i < perm[concat_dim])
-                is[a][i] = size_t(i_d.blocking_desc().strides[0][iperm[i]]);
+                is[a][i] = size_t(i_d.blocking_desc().strides[iperm[i]]);
             else
                 is[a][i] = 0;
         }
     }
 
-    const memory_desc_wrapper o_d(pd()->src_image_pd());
-    auto &blk = o_d.blocking_desc();
+    const memory_desc_wrapper o_d(pd()->dst_md(0));
 
-    strides_t os = { 0 };
-    for (int i = 0; i < perm[concat_dim]; i++)
-        os[i] = o_d.blocking_desc().strides[0][iperm[i]];
+    strides_t os = {0};
+    bool has_outer_loop = false;
+    for (int i = 0; i < perm[concat_dim]; i++) {
+        os[i] = o_d.blocking_desc().strides[iperm[i]];
+        // CAVEAT: if this impl supports not matching stag and dtag, strides
+        // should be taken into account for this condition.
+        if (o_d.padded_dims()[iperm[i]] != 1) has_outer_loop = true;
+    }
 
-    dims_t phys_dims;
-    for (size_t i = 0; i < sizeof(phys_dims)/sizeof(phys_dims[0]); i++)
-        phys_dims[i] = (i < (size_t)perm[concat_dim])
-            ?  o_d.dims()[iperm[i]] / blk.block_dims[iperm[i]] : 1;
-
-    if (perm[concat_dim] == 0) {
+    // Applies when concat axis is the outermost dimension, e.g. concat_axis = 0
+    // or concat_axis = 1, and dims[0] = 1;
+    if (!has_outer_loop) {
         for (int a = 0; a < num_arrs; ++a) {
             const data_t *i = &iptrs[a][0];
             data_t *o = &optrs[a][0];
-            parallel_nd((ptrdiff_t)nelems_to_copy[a],
-                    [&](ptrdiff_t e) { o[e] = i[e]; });
+            parallel_nd(nelems_to_copy[a], [&](dim_t e) { o[e] = i[e]; });
         }
-    } else {
-        parallel_nd(phys_dims[0], phys_dims[1], phys_dims[2], phys_dims[3],
-            phys_dims[4], num_arrs,
-            [&](int n0, int n1, int n2, int n3, int n4, int a) {
-            // XXX: this code may access uninitialized values in is[*][0-4] --
-            // that's why we have to set them to zero although this is
-            // probably benign
-            size_t in_off = is[a][0] * n0 + is[a][1] * n1 + is[a][2] * n2
-                    + is[a][3] * n3 + is[a][4] * n4;
-            size_t out_off = os[0] * n0 + os[1] * n1 + os[2] * n2
-                    + os[3] * n3 + os[4] * n4;
-            const data_t *i = &iptrs[a][in_off];
-            data_t *o = &optrs[a][out_off];
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
-            // The code below performs data copying: o[e] = i[e]
-            // and uses a workaround to make GNU compilers optimize it
-            uint8_t *ptro = reinterpret_cast<uint8_t *>(o);
-            const uint8_t *ptri = reinterpret_cast<const uint8_t *>(i);
-            const size_t main_part =
-                (nelems_to_copy[a] * sizeof(data_t)) / sizeof(uint32_t);
-            const size_t tail_part =
-                (nelems_to_copy[a] * sizeof(data_t)) % sizeof(uint32_t);
-            PRAGMA_OMP_SIMD()
-            for (size_t e = 0; e < main_part; ++e) {
-                *(reinterpret_cast<uint32_t *>(ptro))
-                    = *(reinterpret_cast<const uint32_t *>(ptri));
-                ptro += sizeof(uint32_t);
-                ptri += sizeof(uint32_t);
-            }
-            for (size_t e = 0; e < tail_part; ++e) {
-                *ptro = *ptri;
-                ++ptro;
-                ++ptri;
-            }
-#else
-            PRAGMA_OMP_SIMD()
-            for (size_t e = 0; e < nelems_to_copy[a]; ++e) o[e] = i[e];
-#endif
-        });
+        return status::success;
     }
+
+    dims_t phys_dims;
+    for (int i = 0; i < DNNL_MAX_NDIMS; i++) {
+        if (i < perm[concat_dim])
+            phys_dims[i]
+                    = o_d.padded_dims()[iperm[i]] / pd()->blocks_[iperm[i]];
+        else
+            phys_dims[i] = 1;
+    }
+
+    parallel_nd(phys_dims[0], phys_dims[1], phys_dims[2], phys_dims[3],
+            phys_dims[4], num_arrs,
+            [&](dim_t n0, dim_t n1, dim_t n2, dim_t n3, dim_t n4, int a) {
+                // XXX: this code may access uninitialized values in is[*][0-4] --
+                // that's why we have to set them to zero although this is
+                // probably benign
+                size_t in_off = is[a][0] * n0 + is[a][1] * n1 + is[a][2] * n2
+                        + is[a][3] * n3 + is[a][4] * n4;
+                size_t out_off = os[0] * n0 + os[1] * n1 + os[2] * n2
+                        + os[3] * n3 + os[4] * n4;
+                const data_t *i = &iptrs[a][in_off];
+                data_t *o = &optrs[a][out_off];
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
+                std::memcpy(o, i, nelems_to_copy[a] * sizeof(data_t));
+#else
+                PRAGMA_OMP_SIMD()
+                for (dim_t e = 0; e < nelems_to_copy[a]; ++e) o[e] = i[e];
+#endif
+            });
+
+    return status::success;
 }
 
 template struct simple_concat_t<data_type::f32>;
@@ -120,6 +115,6 @@ template struct simple_concat_t<data_type::s8>;
 template struct simple_concat_t<data_type::s32>;
 template struct simple_concat_t<data_type::bf16>;
 
-}
-}
-}
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl

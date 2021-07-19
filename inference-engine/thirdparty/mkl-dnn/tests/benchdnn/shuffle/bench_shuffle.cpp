@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018 Intel Corporation
+* Copyright 2018-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,102 +14,80 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <float.h>
-#include <math.h>
 
-#include "mkldnn.h"
+#include <sstream>
 
-#include "mkldnn_common.hpp"
-#include "mkldnn_memory.hpp"
-#include "mkldnn_debug.hpp"
+#include "dnnl_common.hpp"
+#include "dnnl_memory.hpp"
+#include "parser.hpp"
 
 #include "shuffle/shuffle.hpp"
 
 namespace shuffle {
 
-/* global driver parameters */
-int mb = 0;
-dir_t dir = FWD_D;
-mkldnn_data_type_t dt = mkldnn_f32;
-mkldnn_memory_format_t fmt = mkldnn_nchw;
-dims_t dims;
-int axis = 1, group = 1;
-const char *pattern = NULL;
-bool allow_unimpl = false;
-const char *perf_template = "perf,%z,%q,%f,%D,%a,%g,%-t,%0t";
+void check_correctness(const settings_t &s) {
+    for_(const auto &i_dir : s.dir)
+    for_(const auto &i_dt : s.dt)
+    for_(const auto &i_tag : s.tag)
+    for_(const auto &i_group : s.group)
+    for_(const auto &i_axis : s.axis)
+    for (const auto &i_scratchpad_mode : s.scratchpad_mode) {
+        attr_t attr;
+        attr.insert(i_scratchpad_mode);
 
-void reset_parameters() {
-    dir = FWD_D;
-    dt = mkldnn_f32;
-    fmt = mkldnn_nchw;
-    axis = 1;
-    group = 1;
-    pattern = NULL;
-    allow_unimpl = false;
+        const prb_t prb(s.dims, i_dir, i_dt, i_tag, i_axis, i_group, attr);
+        std::stringstream ss;
+        ss << prb;
+        const std::string cpp_pstr = ss.str();
+        const char *pstr = cpp_pstr.c_str();
+        BENCHDNN_PRINT(1, "run: %s\n", pstr);
+
+        res_t res {};
+        const int status = doit(&prb, &res);
+
+        bool want_perf_report = false;
+        parse_result(res, want_perf_report, status, pstr);
+
+        if (want_perf_report && bench_mode & PERF) {
+            perf_report_t pr(s.perf_template);
+            pr.report(&prb, &res, pstr);
+        }
+
+        benchdnn_stat.tests++;
+    }
 }
 
-void check_correctness() {
-    const prb_t p(dims, dir, dt, fmt, axis, group);
-    char pstr[max_prb_len];
-    prb2str(&p, pstr);
+int bench(int argc, char **argv) {
+    driver_name = "shuffle";
+    using namespace parser;
+    static settings_t s;
+    static const settings_t def {};
+    for (; argc > 0; --argc, ++argv) {
+        const bool parsed_options = parse_bench_settings(argv[0])
+                || parse_batch(bench, argv[0])
+                || parse_dir(s.dir, def.dir, argv[0])
+                || parse_dt(s.dt, def.dt, argv[0])
+                || parse_tag(s.tag, def.tag, argv[0])
+                || parse_vector_option(
+                        s.group, def.group, atoi, argv[0], "group")
+                || parse_axis(s.axis, def.axis, argv[0])
+                || parse_attr_scratchpad_mode(
+                        s.scratchpad_mode, def.scratchpad_mode, argv[0])
+                || parse_perf_template(s.perf_template, s.perf_template_def,
+                        s.perf_template_csv, argv[0])
+                || parse_reset(s, argv[0]);
+        if (!parsed_options) {
+            catch_unknown_options(argv[0]);
 
-    if (pattern && !match_regex(pstr, pattern))
-        return;
-    print(1, "run: %s\n", pstr);
-
-    res_t res{};
-    const int status = shuffle::doit(&p, &res);
-
-    bool want_perf_report = false;
-    parse_result(res, want_perf_report, allow_unimpl, status, pstr);
-
-    if (want_perf_report && bench_mode & PERF)
-        perf_report(&p, &res, pstr);
-
-    benchdnn_stat.tests++;
-}
-
-int bench(int argc, char **argv, bool main_bench) {
-    for (int arg = 0; arg < argc; ++arg) {
-        if (!strncmp("--batch=", argv[arg], 8))
-            SAFE(batch(argv[arg] + 8, bench), CRIT);
-        else if (!strncmp("--dir=", argv[arg], 6))
-            dir = str2dir(argv[arg] + 6);
-        else if (!strncmp("--dt=", argv[arg], 5))
-            dt = str2dt(argv[arg] + 5);
-        else if (!strncmp("--fmt=", argv[arg], 6))
-            fmt = str2fmt(argv[arg] + 6);
-        else if (!strncmp("--axis=", argv[arg], 7))
-            axis = atoi(argv[arg] + 7);
-        else if (!strncmp("--group=", argv[arg], 8))
-            group = atoi(argv[arg] + 8);
-        else if (!strncmp("--match=", argv[arg], 8))
-            pattern = argv[arg] + 8;
-        else if (!strncmp("--mode=", argv[0], 7))
-            bench_mode = str2bench_mode(argv[0] + 7);
-        else if (!strncmp("-v", argv[arg], 2))
-            verbose = atoi(argv[arg] + 2);
-        else if (!strncmp("--verbose=", argv[arg], 10))
-            verbose = atoi(argv[arg] + 10);
-        else if (!strncmp("--allow-unimpl=", argv[arg], 15))
-            allow_unimpl = str2bool(argv[arg] + 15);
-        else if (!strcmp("--reset", argv[arg]))
-            reset_parameters();
-        else {
-            if (!strncmp("--", argv[arg], 2)) {
-                fprintf(stderr, "driver: unknown option: `%s`, exiting...\n",
-                        argv[arg]);
-                exit(2);
-            }
-            dims = str2dims(argv[arg]);
-            check_correctness();
+            parse_dims(s.dims, argv[0]);
+            check_correctness(s);
         }
     }
 
-    return OK;
+    return parse_last_argument();
 }
 
-}
+} // namespace shuffle

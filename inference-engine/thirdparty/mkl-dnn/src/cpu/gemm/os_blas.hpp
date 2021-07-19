@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2019 Intel Corporation
+* Copyright 2017-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef OS_BLAS_HPP
-#define OS_BLAS_HPP
+#ifndef CPU_GEMM_OS_BLAS_HPP
+#define CPU_GEMM_OS_BLAS_HPP
 
-/* MKLDNN provides gemm functionality on its own using jit generated
+/* oneDNN provides gemm functionality on its own using jit generated
  * kernels. This is the only official supported option.
  *
  * However, for the debugging purposes we keep (internally) an ability
@@ -61,6 +61,6 @@ extern "C" {
 #endif /* defined(USE_CBLAS) */
 #endif /* defined(USE_MKL) */
 
-#endif /* OS_BLAS_HPP */
+#endif /* CPU_GEMM_OS_BLAS_HPP */
 
 // vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s
