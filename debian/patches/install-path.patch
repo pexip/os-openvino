@@ -1,8 +1,8 @@
-diff --git a/cmake/developer_package.cmake b/cmake/developer_package.cmake
+diff --git a/cmake/developer_package/packaging.cmake b/cmake/developer_package/packaging.cmake
 index cda7afd..b4f51b7 100644
---- a/cmake/developer_package.cmake
-+++ b/cmake/developer_package.cmake
-@@ -55,9 +55,9 @@ list(APPEND CMAKE_MODULE_PATH
+--- a/cmake/developer_package/packaging.cmake
++++ b/cmake/developer_package/packaging.cmake
+@@ -18,9 +18,9 @@ list(APPEND CMAKE_MODULE_PATH
          set(IE_CPACK_RUNTIME_PATH ${IE_CPACK_IE_DIR}/bin/${ARCH_FOLDER}/${CMAKE_BUILD_TYPE} PARENT_SCOPE)
          set(IE_CPACK_ARCHIVE_PATH ${IE_CPACK_IE_DIR}/lib/${ARCH_FOLDER}/${CMAKE_BUILD_TYPE} PARENT_SCOPE)
      else()
@@ -19,82 +19,79 @@ diff --git a/inference-engine/src/inference_engine/CMakeLists.txt b/inference-en
 index f012a03..3c8cde7 100644
 --- a/inference-engine/src/inference_engine/CMakeLists.txt
 +++ b/inference-engine/src/inference_engine/CMakeLists.txt
-@@ -239,7 +239,7 @@ endif()
- 
+@@ -261,7 +261,7 @@ endif()
  ie_cpack_add_component(core REQUIRED DEPENDS ${core_components})
+ ie_cpack_add_component(core_dev REQUIRED core ngraph_dev)
  
 -install(DIRECTORY "${IE_MAIN_SOURCE_DIR}/include" DESTINATION ${IE_CPACK_IE_DIR}
 +install(DIRECTORY "${IE_MAIN_SOURCE_DIR}/include/" DESTINATION "include/openvino"
-         COMPONENT core)
- install(TARGETS ${TARGET_NAME}
-         RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH} COMPONENT core
-@@ -248,8 +248,8 @@ install(TARGETS ${TARGET_NAME}
- install(FILES "${OpenVINO_BINARY_DIR}/share/ie_parallel.cmake"
-               "${OpenVINO_BINARY_DIR}/share/InferenceEngineConfig.cmake"
-               "${OpenVINO_BINARY_DIR}/share/InferenceEngineConfig-version.cmake"
--        DESTINATION ${IE_CPACK_IE_DIR}/share
-+        DESTINATION ${IE_CPACK_LIBRARY_PATH}/cmake/InferenceEngine/
-         COMPONENT core)
+         COMPONENT core_dev)
+ 
+ install(TARGETS ${TARGET_NAME} EXPORT InferenceEngineTargets
+@@ -270,7 +270,7 @@ install(TARGETS ${TARGET_NAME} EXPORT InferenceEngineTargets
+         LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH} COMPONENT core)
+ 
  install(FILES $<TARGET_FILE_DIR:${TARGET_NAME}>/plugins.xml
 -        DESTINATION ${IE_CPACK_RUNTIME_PATH}
 +        DESTINATION ${IE_CPACK_RUNTIME_PATH}/openvino/inference-plugins/
          COMPONENT core)
-diff --git a/inference-engine/cmake/share/InferenceEngineConfig.cmake.in b/inference-engine/cmake/share/InferenceEngineConfig.cmake.in
-index 5ede817..47f8233 100644
---- a/inference-engine/cmake/share/InferenceEngineConfig.cmake.in
-+++ b/inference-engine/cmake/share/InferenceEngineConfig.cmake.in
-@@ -76,7 +76,7 @@ else()
  
-     find_path(IE_INCLUDE_DIR inference_engine.hpp "${IE_ROOT_DIR}/include" NO_DEFAULT_PATH)
- 
--    set(IE_LIB_DIR "${IE_ROOT_DIR}/lib/${_ARCH}")
-+    set(IE_LIB_DIR "${IE_ROOT_DIR}/${CMAKE_INSTALL_LIBDIR}")
-     set(IE_LIB_REL_DIR "${IE_LIB_DIR}/Release")
-     set(IE_LIB_DBG_DIR "${IE_LIB_DIR}/Debug")
- 
-@@ -163,6 +163,6 @@ else()
-                                       IE::inference_engine_c_api)
- 
-         set(IE_EXTERNAL_DIR "${IE_ROOT_DIR}/external")
--        include("${IE_ROOT_DIR}/share/ie_parallel.cmake")
-+        include("${CMAKE_CURRENT_LIST_DIR}/ie_parallel.cmake")
-     endif()
- endif()
+ # Install cmake scripts
+@@ -307,5 +307,5 @@ install(TARGETS ${TARGET_NAME}
+ install(FILES "${CMAKE_BINARY_DIR}/share/InferenceEngineConfig.cmake"
+               "${CMAKE_BINARY_DIR}/InferenceEngineConfig-version.cmake"
+               "${InferenceEngine_SOURCE_DIR}/cmake/ie_parallel.cmake"
+-        DESTINATION ${IE_CPACK_IE_DIR}/share
++        DESTINATION ${IE_CPACK_LIBRARY_PATH}/cmake/InferenceEngine/
+         COMPONENT core_dev)
 diff --git a/ngraph/CMakeLists.txt b/ngraph/CMakeLists.txt
 index 99f32a6..4827ac9 100644
 --- a/ngraph/CMakeLists.txt
 +++ b/ngraph/CMakeLists.txt
-@@ -490,7 +490,7 @@ if (NGRAPH_EXPORT_TARGETS_ENABLE)
-     install(EXPORT ngraphTargets
-         FILE ngraphTargets.cmake
-         NAMESPACE ngraph::
--        DESTINATION ${NGRAPH_COMPONENT_PREFIX}cmake
-+        DESTINATION ${NGRAPH_INSTALL_LIB}/cmake/ngraph
-         COMPONENT ngraph)
+@@ -183,10 +183,10 @@ endif()
+ message(STATUS "Installation directory: ${CMAKE_INSTALL_PREFIX}")
  
-     configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/share/ngraphConfig.cmake.in
-@@ -503,7 +503,7 @@ if (NGRAPH_EXPORT_TARGETS_ENABLE)
+ # Destinations
+-set(NGRAPH_INSTALL_LIB "deployment_tools/ngraph/${CMAKE_INSTALL_LIBDIR}")
+-set(NGRAPH_INSTALL_INCLUDE "deployment_tools/ngraph/${CMAKE_INSTALL_INCLUDEDIR}")
+-set(NGRAPH_INSTALL_DOC "deployment_tools/ngraph/${CMAKE_INSTALL_DOCDIR}")
+-set(NGRAPH_INSTALL_BIN "deployment_tools/ngraph/${CMAKE_INSTALL_BINDIR}")
++set(NGRAPH_INSTALL_LIB "${CMAKE_INSTALL_LIBDIR}")
++set(NGRAPH_INSTALL_INCLUDE "${CMAKE_INSTALL_INCLUDEDIR}")
++set(NGRAPH_INSTALL_DOC "${CMAKE_INSTALL_DOCDIR}")
++set(NGRAPH_INSTALL_BIN "${CMAKE_INSTALL_BINDIR}")
+ 
+ #-----------------------------------------------------------------------------------------------
+ # Compile Flags for nGraph...
+@@ -272,7 +272,7 @@ if (NGRAPH_EXPORT_TARGETS_ENABLE)
+         install(EXPORT ngraphTargets
+             FILE ngraphTargets.cmake
+             NAMESPACE ngraph::
+-            DESTINATION "deployment_tools/ngraph/cmake"
++            DESTINATION ${NGRAPH_INSTALL_LIB}/cmake/ngraph
+             COMPONENT ngraph_dev)
+     endif()
+ 
+@@ -286,7 +286,7 @@ if (NGRAPH_EXPORT_TARGETS_ENABLE)
  
      install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ngraphConfig.cmake
          ${CMAKE_CURRENT_BINARY_DIR}/ngraphConfigVersion.cmake
--        DESTINATION ${NGRAPH_COMPONENT_PREFIX}cmake
+-        DESTINATION "deployment_tools/ngraph/cmake"
 +        DESTINATION ${NGRAPH_INSTALL_LIB}/cmake/ngraph
-         COMPONENT ngraph)
+         COMPONENT ngraph_dev)
  endif()
  
-diff --git a/inference-engine/cmake/plugins/plugins.cmake b/inference-engine/cmake/plugins/plugins.cmake
+diff --git a/cmake/developer_package/plugins/plugins.cmake b/cmake/developer_package/plugins/plugins.cmake
 index 52b033d..ae06a02 100644
---- a/inference-engine/cmake/plugins/plugins.cmake
-+++ b/inference-engine/cmake/plugins/plugins.cmake
-@@ -105,9 +105,9 @@ function(ie_add_plugin)
+--- a/cmake/developer_package/plugins/plugins.cmake
++++ b/cmake/developer_package/plugins/plugins.cmake
+@@ -123,8 +123,8 @@ function(ie_add_plugin)
          ie_cpack_add_component(${install_component} REQUIRED DEPENDS core)
  
          install(TARGETS ${IE_PLUGIN_NAME}
 -            RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH} COMPONENT ${install_component}
--            ARCHIVE DESTINATION ${IE_CPACK_ARCHIVE_PATH} COMPONENT ${install_component}
--            LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH} COMPONENT ${install_component})
+-            LIBRARY DESTINATION ${IE_CPACK_RUNTIME_PATH} COMPONENT ${install_component})
 +            RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH}/openvino/inference-plugins COMPONENT ${install_component}
-+            ARCHIVE DESTINATION ${IE_CPACK_ARCHIVE_PATH}/openvino/inference-plugins COMPONENT ${install_component}
 +            LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH}/openvino/inference-plugins COMPONENT ${install_component})
      endif()
  endfunction()
@@ -103,10 +100,10 @@ diff --git a/inference-engine/ie_bridges/c/src/CMakeLists.txt b/inference-engine
 index 223b635..adecba5 100644
 --- a/inference-engine/ie_bridges/c/src/CMakeLists.txt
 +++ b/inference-engine/ie_bridges/c/src/CMakeLists.txt
-@@ -34,5 +34,5 @@ install(TARGETS ${TARGET_NAME}
-         LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH} COMPONENT core)
+@@ -40,5 +40,5 @@ install(TARGETS ${TARGET_NAME}
+         LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH} COMPONENT core_c)
  
  install(DIRECTORY ${InferenceEngine_C_API_SOURCE_DIR}/include/
--        DESTINATION ${IE_CPACK_IE_DIR}/include/
+-        DESTINATION ${IE_CPACK_IE_DIR}/include
 +        DESTINATION "include/openvino"
-         COMPONENT core)
+         COMPONENT core_c_dev)
