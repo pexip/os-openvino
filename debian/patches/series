@@ -4,3 +4,4 @@ system-ade.patch
 system-onnx.patch
 remove-tbbbind.patch
 system-tbb.patch
+system-xbyak.patch
