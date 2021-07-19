@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2018 Intel Corporation
+* Copyright 2017-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,391 +14,458 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cmath>
 #include <stdlib.h>
 
+#include "dnnl.h"
+
 #include "dnn_types.hpp"
-#include "mkldnn_common.hpp"
-#include "mkldnn_memory.hpp"
+#include "dnnl_common.hpp"
+#include "dnnl_memory.hpp"
 
 #include "reorder.hpp"
 
 namespace reorder {
 
-int get_scale_mask(const mkldnn_memory_desc_t &md, const attr_t &attr) {
-    using P = attr_t::scale_t::policy_t;
-    const auto policy = attr.oscale.policy;
-
-    const bool is_data = fmt2data_kind(md.format) == DATA;
-    const bool is_gwei = fmt2data_kind(md.format) == GWEI;
-
-    int scale_mask = 0;
-
-    switch (policy) {
-    case P::PER_OC:
-        if (md.ndims < 2) SAFE_V(FAIL);
-        scale_mask = is_data
-            ? 1 << 1
-            : (is_gwei ? (1 << 0) + (1 << 1) : 1 << 0);
-        break;
-    case P::COMMON:
-    case P::NONE: scale_mask = 0; break;
-    default: SAFE_V(FAIL);
+int get_n_scales(const prb_t *prb) {
+    const int mask = attr_t::get_default_mask(prb->attr.oscale.policy);
+    assert(IMPLICATION(mask >= (1 << 1), prb->ndims > 1));
+    switch (mask) {
+        case 0: return 1;
+        case (1 << 0): return prb->reorder.dims[0];
+        case (1 << 1): return prb->reorder.dims[1];
+        case (1 << 1) + (1 << 0):
+            return prb->reorder.dims[1] * prb->reorder.dims[0];
+        default: assert(!"unsupported mask"); return 1;
     }
-
-    return scale_mask;
 }
 
-int scales_count(int *count, int *mask, const dnn_mem_t &memory,
-        const attr_t &attr) {
-    const mkldnn_memory_desc_t &md = memory.md_;
-    const int scale_mask = get_scale_mask(md, attr);
-    if (mask) *mask = scale_mask;
-
-    int uniq_scales = 1;
-    for(int d = 0; d < md.ndims; ++d) {
-        if (scale_mask & (1 << d))
-            uniq_scales *= md.dims[d];
-    }
-    *count = uniq_scales;
-    return OK;
-}
-
-int fill_scales(const prb_t *p, float *scales, int count) {
-    const float scale_value = p->attr.oscale.scale;
-
-    for (int i = 0; i < count; ++i)
-        scales[i] = scale_value;
-
-    if (count != 1) scales[count - 1] = scale_value + 1.1;
-
-    return OK;
-}
-
-inline float saturate(float value, float min, float max) {
-    return MAX2(min, MIN2(max, value));
-}
-
-int fill_memory(const prb_t *p, dnn_mem_t &mem, const float *scales,
-        const attr_t &attr) {
-    const dt_conf_t c_src = p->conf_in;
+int fill_memory(const prb_t *prb, data_kind_t kind, dnn_mem_t &mem) {
+    const dt_conf_t c_src = prb->conf_in;
+    const auto dt = c_src->dt;
     const int range = c_src->range;
     const int max = c_src->min + range - 1;
-    int scale_mask = get_scale_mask(mem.md_, attr);
+    const int scale_mask = attr_t::get_default_mask(prb->attr.oscale.policy);
 
-    const size_t nelems = mem.nelems();
+    const auto nelems = mem.nelems();
 
-    for (size_t idx = 0; idx < nelems; ++idx) {
-        const size_t mask_idx = mem.get_scale_idx(idx, scale_mask);
-        const float scale = scales[mask_idx];
+    for (int64_t idx = 0; idx < nelems; ++idx) {
+        const int64_t mask_idx = mem.get_scale_idx(idx, scale_mask);
+        const float scale = prb->scales[mask_idx];
 
         const float gen[7] = {
-            (float)max, /* saturate to max of output data type */
-            (float)c_src->min, /* saturate to min of output data type */
-            (float)1.6 / scale, /* rounding check */
-            (float)0.2 / scale, /* saturate to 0 */
-            (float)1.0,
-            (float)2.0,
-            (float)scale,
+                (float)max, /* saturate to max of output data type */
+                (float)c_src->min, /* saturate to min of output data type */
+                (float)1.6 / scale, /* rounding check */
+                (float)0.2 / scale, /* saturate to 0 */
+                (float)1.0,
+                (float)2.0,
+                (float)scale,
         };
 
-        float value = saturate(gen[idx % 7], c_src->min, max);
-        mem.set_elem(idx, value);
+        const int rng = kind == SRC ? (idx % 7) : ((idx * 8 / 7) % 7);
+        mem.set_elem(idx, round_to_nearest_representable(dt, gen[rng]));
     }
 
     return OK;
 }
 
-/* TODO: Complete */
-int reorder(const prb_t *p, dnn_mem_t &dst, const dnn_mem_t &src,
-        const float *scales) {
+int fill_memory_extra(const prb_t *prb, dnnl_memory_extra_desc_t &extra) {
+    extra.flags = dnnl_memory_extra_flag_none;
+
+    if (prb->is_reorder_with_compensation()) {
+        int with_groups = prb->oflag == FLAG_GCONV_S8S8 ? 1 : 0;
+        extra.flags = dnnl_memory_extra_flag_compensation_conv_s8s8;
+        extra.compensation_mask = (1 << 0) + with_groups * (1 << 1);
+    }
+
+    return OK;
+}
+
+int ref_reorder(const prb_t *prb, dnn_mem_t &dst, const dnn_mem_t &src) {
     auto dst_dt = dst.dt();
 
-    size_t nelems = src.nelems();
+    const auto nelems = src.nelems();
+    const int scale_mask = attr_t::get_default_mask(prb->attr.oscale.policy);
+    const int src_zero_point = prb->src_zp ? prb->src_zp[0] : 0;
+    const int dst_zero_point = prb->dst_zp ? prb->dst_zp[0] : 0;
 
-    /* calculate min max for data_type */
-    /* TODO: add dst range support */
-//    const auto c_dst = p->conf_out;
-//    const float dst_conf_min = c_dst.min;
-//    const float dst_conf_max = dst_conf_min + c_dst.range - 1;
+    float beta = 0;
+    const auto &po = prb->attr.post_ops;
+    const int beta_idx = po.find(attr_t::post_ops_t::kind_t::SUM);
+    if (beta_idx >= 0) beta = po.entry[beta_idx].sum.scale;
 
-    auto dst_width = dst_dt == mkldnn_bf16 ? 32 : dst.sizeof_dt() * 8;
+    for (int64_t idx = 0; idx < nelems; ++idx) {
+        float s = src.get_elem(idx) - src_zero_point;
+        float d = 0;
+        if (beta_idx >= 0) d = dst.get_elem(idx) - dst_zero_point;
 
-    const float dst_dt_min = dst_dt == mkldnn_u8
-        ? 0.f : -(float)(1l << (dst_width - 1));
-    const float dst_dt_max = dst_dt == mkldnn_u8
-        ? 255.f : (float)((1l << (dst_width - 1)) - 1);
+        const int64_t scale_idx = dst.get_scale_idx(idx, scale_mask);
+        const float alpha = prb->scales[scale_idx];
+        const float value = alpha * s + beta * d + dst_zero_point;
 
-    /* TODO: add dst range support */
-//    const float dst_max = MIN2(dst_conf_max, dst_dt_max);
-//    const float dst_min = MAX2(dst_conf_min, dst_dt_min);
-    const float dst_max = dst_dt_max;
-    const float dst_min = dst_dt_min;
-
-    const int scale_mask = get_scale_mask(src.md_, p->attr);
-
-    for (size_t idx = 0; idx < nelems; ++idx) {
-        float src_ = src.get_elem(idx);
-        const size_t scale_idx = dst.get_scale_idx(idx, scale_mask);
-
-        const float scale = scales[scale_idx];
-
-        float dst_ = saturate(src_ * scale, dst_min, dst_max);
-
-        /* parse round mode and round value*/
-        if (dst_dt != mkldnn_f32 && dst_dt != mkldnn_bf16) {
-            switch (p->attr.irmode) {
-                case attr_t::NEAREST: dst_ = rint(dst_); break;
-                case attr_t::DOWN: dst_ = floorf(dst_); break;
-                default: assert(!"unknown round_mode");
-            }
-            dst_ = saturate(dst_, dst_min, dst_max);
-        }
-
-        dst.set_elem(idx, dst_);
+        dst.set_elem(idx, round_to_nearest_representable(dst_dt, value));
     }
 
     return OK;
 }
 
-int compare(const prb_t *p, dnn_mem_t &mem_expected, dnn_mem_t &mem_computed,
-        const float *scales, int count, res_t *r){
-    size_t nelems = mem_expected.nelems();
-    assert(nelems == mem_computed.nelems());
+int compare_bootstrap(dnn_mem_t &mem_ref, dnn_mem_t &mem_got, res_t *res) {
+    bool ok = false;
+    // demand bit-wise identical results
+    const auto size_ref = mem_ref.size();
+    if (size_ref == 0) return res->state = PASSED, OK;
 
-    r->errors = 0;
-    r->total = nelems;
+    if (size_ref == mem_got.size())
+        ok = !memcmp((void *)mem_ref, (void *)mem_got, size_ref);
 
-    /* TODO: range support */
-    const auto dt = mem_expected.dt();
-    const size_t width = mem_expected.sizeof_dt()*8;
-    const bool is_bf16 = mem_computed.dt() == mkldnn_bf16;
+    res->errors = !ok;
+    res->state = ok ? PASSED : FAILED;
+    res->total = 1;
 
-    const float dt_min = dt == mkldnn_u8
-        ? 0.f : -(float)(1l << (width - 1));
-    const float dt_max = dt == mkldnn_u8
-        ? 255.f : (float)((1l << (width - 1)) - 1);
+    return res->state == FAILED ? FAIL : OK;
+}
 
-    size_t inf_p = 0, inf_n = 0, zeros = 0, reg = 0;
+static int compare(const prb_t *prb, const dnn_mem_t &mem_ref,
+        const dnn_mem_t &mem_got, res_t *res) {
+    const auto nelems = mem_got.nelems();
+    if (nelems == 0) return res->state = PASSED, OK;
 
-    for (size_t i = 0; i < nelems; ++i) {
-        const float expected = mem_expected.get_elem(i);
-        const float computed = mem_computed.get_elem(i);
-        const float diff = is_bf16
-                ? fabsf(computed - expected) / MAX2(FLT_MIN, fabsf(expected))
-                : fabsf(computed - expected);
+    res->total = nelems;
 
-        if (expected == dt_max) inf_p++;
-        else if (expected == dt_min) inf_n++;
-        else if (expected == 0.0) zeros++;
+    int64_t inf_p = 0, inf_n = 0, zeros = 0, reg = 0;
+
+    const auto dt_out = mem_ref.dt();
+    const size_t width = mem_ref.sizeof_dt() * 8;
+    const float dt_out_min
+            = dt_out == dnnl_u8 ? 0.f : -(float)(1l << (width - 1));
+    const float dt_out_max
+            = dt_out == dnnl_u8 ? 255.f : (float)((1l << (width - 1)) - 1);
+    const float tolerance = (dt_out == dnnl_bf16)
+            ? 4e-3 // due to bf16 truncation (7th mantissa bit -> 1/129)
+            : 0.;
+
+    for (int64_t i = 0; i < nelems; i++) {
+        const float dt = mem_got.get_elem(i);
+        const float fp = mem_ref.get_elem(i);
+
+        if (fp == dt_out_max)
+            inf_p++;
+        else if (fp == dt_out_min)
+            inf_n++;
+        else if (fp == 0.0)
+            zeros++;
         else
             reg++;
 
-        const float tolerance = is_bf16
-                ? 8.e-3f // due to bf16 truncation (7th mantissa bit -> 1/129)
-                : 0.f;
-        if (r->errors < 10 && diff > tolerance) {
-            printf("idx: %zu exp: %f com:%f\n", i, expected, computed);
-            r->errors++;
+        const float diff = fabsf(fp - dt);
+        const float rel_diff = diff / (fabsf(fp) > FLT_MIN ? fabsf(fp) : 1);
+        bool ok = rel_diff <= tolerance;
+
+        // f32->f16 results in inf for FLT_MAX input
+        if (!ok) ok = std::isinf(fp) && std::isinf(dt);
+
+        res->errors += !ok;
+
+        const bool dump = false || (!ok && (res->errors < 10 || verbose >= 10))
+                || (verbose >= 50 && i < 30) || (verbose >= 99);
+        if (dump) {
+            std::stringstream ss;
+            dims_t dims_idx = off2dims_idx(prb->reorder.dims, i);
+            ss << dims_idx;
+            std::string ind_str = ss.str();
+
+            BENCHDNN_PRINT(0,
+                    "[%4ld][%s] fp:% 12.6g dt:% 12.6g diff:%8.3g rdiff:%8.3g\n",
+                    (long)i, ind_str.c_str(), fp, dt, diff, rel_diff);
         }
     }
 
-    if (r->errors)
-        r->state = FAILED;
+    if (res->errors) res->state = FAILED;
 
-    if (r->state == UNTESTED)
-        r->state = PASSED; /* optimism */
+    if (res->state == UNTESTED) res->state = PASSED; /* optimism */
 
-    float max_scale = scales[0];
-    for (int i = 1; i < count; ++i) {
-        if (scales[i] > max_scale) max_scale = scales[i];
+    if (res->state != FAILED) {
+        float max_scale = prb->scales[0];
+        for (int i = 1; i < get_n_scales(prb); ++i)
+            max_scale = MAX2(max_scale, prb->scales[i]);
+
+        dt_conf_t c_src = prb->conf_in;
+        dt_conf_t c_dst = prb->conf_out;
+        const int c_src_max = c_src->min + c_src->range - 1;
+        const int c_dst_max = c_dst->min + c_dst->range - 1;
+
+        bool check_int_overflow = (dt_out != dnnl_f32 && dt_out != dnnl_f16
+                && dt_out != dnnl_bf16);
+        bool check_inf_p = (check_int_overflow && dt_out != dnnl_s32)
+                && (c_src_max * max_scale > c_dst_max);
+        bool check_inf_n = (check_int_overflow && dt_out != dnnl_s32)
+                && (c_src->min * max_scale < c_dst->min);
+        bool check_zeros = (check_int_overflow)
+                && (dt_out_min != 0 && dt_out_max != 0)
+                && IMPLICATION(prb->src_zp, prb->src_zp[0] == 0)
+                && IMPLICATION(prb->dst_zp, prb->dst_zp[0] == 0)
+                && prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM)
+                        == -1;
+
+        bool mistrusted = (check_inf_p && inf_p == 0)
+                || (check_inf_n && inf_n == 0) || (check_zeros && zeros == 0);
+
+        bool expect_regular = max_scale < 2e9 || dt_out == dnnl_f32;
+        if (expect_regular) mistrusted = mistrusted || reg == 0;
+
+        if (mistrusted) res->state = MISTRUSTED;
     }
 
-    dt_conf_t c_src = p->conf_in;
-    dt_conf_t c_dst = p->conf_out;
-    const int c_src_max = c_src->min + c_src->range - 1;
-    const int c_dst_max = c_dst->min + c_dst->range - 1;
-
-    bool check_inf_p =
-        (dt != mkldnn_f32 && dt != mkldnn_s32 && dt != mkldnn_bf16)
-        && (c_src_max * max_scale > c_dst_max) ? true : false;
-    bool check_inf_n =
-        (dt != mkldnn_f32 && dt != mkldnn_s32 && dt != mkldnn_bf16)
-        && (c_src->min * max_scale < c_dst->min) ? true : false;
-    bool check_zeros = (dt != mkldnn_f32 && dt != mkldnn_bf16)
-        && (dt_min != 0 && dt_max != 0) ? true : false;
-
-    bool mistrusted = reg == 0
-        || (check_inf_p && inf_p == 0)
-        || (check_inf_n && inf_n == 0)
-        || (check_zeros && zeros == 0);
-    if (mistrusted) r->state = MISTRUSTED;
-
-    return r->state == FAILED ? FAIL : OK;
+    return res->state == FAILED ? FAIL : OK;
 }
 
-int check_reorder(const prb_t *p, res_t *res) {
-/*                                       ___________________
- *                                      |                   |
- *                                      | performance timer |
- *                                      |___________________|
- *                                                |
- *   _______________           ______________     V     ________________
- *  |               | MKL-DNN |              | MKL-DNN |                |
- *  | dt_in fmt_ref |-------->| dt_in fmt_in |-------->| dt_out fmt_out |
- *  |_______________|         |______________|    ^    |________________|
- *           |                                    |            |
- *  benchdnn |<-------------------------------- scales         | MKL-DNN
- *   ________V_______                                   _______V________
- *  |                |                                 |                |
- *  | dt_out fmt_ref |         <= compare =>           | dt_out fmt_ref |
- *  |________________|                                 |________________|
- *
- * Steps:
- * 1. create memory
- * 2. fill scales
- * 3. fill input memory
- * 4. execute mkl-dnn: reorder->q10n->reorder
- * 5. execute benchdnn: q10n
- * 6. compare results
- * 7. performance measurment
- * 8. clean up
- */
+static int init_pd(dnnl_engine_t engine, const prb_t *prb,
+        dnnl_primitive_desc_t &rpd, res_t *res, dir_t dir,
+        const_dnnl_primitive_desc_t hint) {
+    const auto &rc = prb->reorder;
+    auto dims = rc.dims;
+    for (int d = 0; d < prb->ndims; ++d)
+        if (prb->runtime_dim_mask & (1 << d)) dims[d] = DNNL_RUNTIME_DIM_VAL;
 
-    const reorder_conf_t &r = p->reorder;
-    const int ndims = (int)r.dims.size();
-    const ptrdiff_t *dims = &r.dims[0];
+    dnnl_memory_desc_t src_d, dst_d;
+    SAFE(init_md(&src_d, prb->ndims, dims.data(), prb->conf_in->dt, rc.tag_in),
+            CRIT);
+    SAFE(init_md(&dst_d, prb->ndims, dims.data(), prb->conf_out->dt,
+                 rc.tag_out),
+            CRIT);
 
-    mkldnn_memory_format_t fmt_ref;
-    const bool is_data = fmt2data_kind(r.fmt_in) == DATA;
-    const bool is_gwei = fmt2data_kind(r.fmt_in) == GWEI;
+    // assign extra for dst_md
+    dnnl_memory_extra_desc_t dst_md_extra {};
+    fill_memory_extra(prb, dst_md_extra);
+    dst_d.extra = dst_md_extra;
 
-    switch (ndims) {
-    case 1: assert(is_data); fmt_ref = mkldnn_x; break;
-    case 2: fmt_ref = is_data ? mkldnn_nc : mkldnn_oi; break;
-    case 3: assert(is_data); fmt_ref = mkldnn_tnc; break;
-    case 4: fmt_ref = is_data ? mkldnn_nchw : mkldnn_oihw; break;
-    case 5:
-            fmt_ref = is_data
-                ? mkldnn_ncdhw
-                : (is_gwei ? mkldnn_goihw : mkldnn_oidhw);
-            break;
-    case 6: assert(!is_data);
-            fmt_ref = is_gwei ? mkldnn_goidhw : mkldnn_ldigo;
-            break;
-    default: assert(!"bad ndims"); return FAIL;
+    dnnl_engine_t src_engine = engine, dst_engine = engine;
+    if (engine_tgt_kind == dnnl_gpu) {
+        switch (prb->cross_engine) {
+            case CPU2GPU: src_engine = get_cpu_engine(); break;
+            case GPU2CPU: dst_engine = get_cpu_engine(); break;
+            default: break;
+        }
     }
 
-    /* Step 1: create memory */
-    dnn_mem_t mem_dt_in_fmt_ref(ndims, dims, p->conf_in->dt, fmt_ref);
-    dnn_mem_t mem_dt_in_fmt_in(ndims, dims, p->conf_in->dt, r.fmt_in);
-    dnn_mem_t mem_dt_out_fmt_out(ndims, dims, p->conf_out->dt, r.fmt_out);
-    dnn_mem_t mem_dt_out_fmt_ref(ndims, dims, p->conf_out->dt, fmt_ref);
-    dnn_mem_t mem_test_dt_out_fmt_out(ndims, dims, p->conf_out->dt, r.fmt_out);
-    dnn_mem_t mem_test_dt_out_fmt_ref(ndims, dims, p->conf_out->dt, fmt_ref);
+    attr_args_t attr_args;
+    attr_args.prepare_output_scales(prb->attr, prb->scales, get_n_scales(prb));
+    auto dnnl_attr = create_dnnl_attr(prb->attr, attr_args);
 
-    /* Step 2: fill scales */
-    int count = 0, mask = 0;
-    SAFE(scales_count(&count, &mask, mem_dt_out_fmt_out, p->attr), WARN);
-    float *scales = (float *)zmalloc(sizeof(float) * count, 64);
-    SAFE(scales != NULL ? OK : FAIL, CRIT);
-    SAFE(fill_scales(p, scales, count), WARN);
-    /* Step 3: fill input memory */
-    SAFE(fill_memory(p, mem_dt_in_fmt_ref, scales, p->attr), WARN);
+    dnnl_status_t init_status = dnnl_reorder_primitive_desc_create(
+            &rpd, &src_d, src_engine, &dst_d, dst_engine, dnnl_attr);
 
-    /* Step 4: execute mkl-dnn */
-    SAFE(mem_dt_in_fmt_in.reorder(mem_dt_in_fmt_ref), WARN);
+    dnnl_primitive_attr_destroy(dnnl_attr);
 
-    auto mkldnn_attr = create_mkldnn_attr(p->attr, count, mask, scales);
-
-    mkldnn_primitive_desc_t check_rpd;
-    mkldnn_status_t init_status = mkldnn_reorder_primitive_desc_create_v2(
-            &check_rpd, mem_dt_in_fmt_in.mpd_, mem_dt_out_fmt_out.mpd_,
-            mkldnn_attr);
-    if (init_status == mkldnn_unimplemented) {
-        res->state = UNIMPLEMENTED;
-        goto cleanup;
-    }
-    mkldnn_primitive_desc_destroy(check_rpd);
+    if (init_status == dnnl_unimplemented)
+        return res->state = UNIMPLEMENTED, OK;
     SAFE(init_status, WARN);
 
-    SAFE(mem_dt_out_fmt_out.reorder(mem_dt_in_fmt_in, mkldnn_attr), WARN);
-
-    /* Step 5: check corrrectness */
-    if (bench_mode & CORR) {
-        if (p->alg == ALG_BOOT) {
-            /* "bootstrap" algorithm: compare to another mkldnn reorder. use
-             * this when benchdnn does not know about all details of the data
-             * layout, as is the case for "compensated" (_s8s8) formats */
-
-            /* Step 5a: mkldnn reorder from ref format to output format */
-            SAFE(mem_test_dt_out_fmt_out.reorder(
-                         mem_dt_in_fmt_ref, mkldnn_attr),
-                    WARN);
-
-            /* Step 5b: compare results (expect bit-wise exactness) */
-            int diff = 0;
-            diff = memcmp((void *)mem_test_dt_out_fmt_out,
-                    (void *)mem_dt_out_fmt_out, mem_dt_out_fmt_out.size());
-            res->errors = diff == 0 ? 0 : 1;
-            res->state = diff == 0 ? PASSED : FAILED;
-            res->total = 1;
-            SAFE(res->state == FAILED ? FAIL : OK, WARN);
-        } else {
-            /* (default) "reference" algorithm: compare to benchdnn reorder */
-
-            /* Step 5a: reorder output from mkldnn to ref format using mkldnn */
-            SAFE(mem_dt_out_fmt_ref.reorder(mem_dt_out_fmt_out), WARN);
-
-            /* Step 5b: execute benchdnn reorder */
-            SAFE(reorder(p, mem_test_dt_out_fmt_ref, mem_dt_in_fmt_ref, scales),
-                    WARN);
-
-            /* Step 5c: compare benchdnn and mkldnn output */
-            SAFE(compare(p, mem_test_dt_out_fmt_ref, mem_dt_out_fmt_ref, scales,
-                         count, res),
-                    WARN);
-        }
-    }
-
-    /* Step 6: performance measurement */
-    if (bench_mode & PERF) {
-        mkldnn_primitive_desc_t perf_r_pd;
-        mkldnn_primitive_t perf_r;
-
-        DNN_SAFE(mkldnn_reorder_primitive_desc_create_v2(&perf_r_pd,
-                mem_dt_in_fmt_in.mpd_, mem_dt_out_fmt_out.mpd_,
-                mkldnn_attr), WARN);
-        mkldnn_primitive_at_t i = {mem_dt_in_fmt_in.p_, 0};
-        const_mkldnn_primitive_t o = mem_dt_out_fmt_out.p_;
-        DNN_SAFE(mkldnn_primitive_create(&perf_r, perf_r_pd, &i, &o), WARN);
-        DNN_SAFE_V(mkldnn_primitive_desc_destroy(perf_r_pd));
-
-        auto &t = res->timer;
-        t.reset();
-        while (true) {
-            SAFE(execute(perf_r), WARN);
-            t.stamp();
-            const bool stop = false
-                || (fix_times_per_prb && t.times() >= fix_times_per_prb)
-                || (!fix_times_per_prb
-                        && t.total_ms() >= max_ms_per_prb
-                        && t.times() >= min_times_per_prb);
-            if (stop) break;
-        }
-
-        DNN_SAFE_V(mkldnn_primitive_destroy(perf_r));
-    }
-
-    /* Step 7: clean up */
-cleanup:
-    mkldnn_primitive_attr_destroy(mkldnn_attr);
-    zfree(scales);
+    res->impl_name = query_impl_info(rpd);
+    BENCHDNN_PRINT(5, "oneDNN implementation: %s\n", res->impl_name.c_str());
 
     return OK;
 }
 
-int doit(const prb_t *p, res_t *r) {
-    return check_reorder(p, r);
+void check_known_skipped_case(const prb_t *prb, res_t *res) {
+    const auto sdt = prb->conf_in->dt;
+    const auto ddt = prb->conf_out->dt;
+    check_known_skipped_case_common({sdt, ddt}, FWD_D, res);
+    if (res->state == SKIPPED) return;
+
+    // zero points for dst do not support sum by design
+    if (!prb->attr.zero_points.is_def(DNNL_ARG_DST)
+            && prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) != -1) {
+        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+        return;
+    }
+
+    if (prb->is_reorder_with_compensation()) {
+        // compensation is supported for dst_dt = s8 so far
+        // compensation does not support any attributes or runtime dims
+        if (ddt != dnnl_s8 || !prb->attr.is_def()
+                || prb->runtime_dim_mask != 0) {
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            return;
+        }
+    }
+
+    // bf16 reorder on cpu supports only bf16/f32 src_dt/dst_dt
+    if (engine_tgt_kind == dnnl_cpu
+            && (!IMPLICATION(sdt == dnnl_bf16,
+                        ddt == dnnl_f32 || ddt == dnnl_bf16 || ddt == dnnl_s8
+                                || ddt == dnnl_u8)
+                    || !IMPLICATION(ddt == dnnl_bf16,
+                            sdt == dnnl_f32 || sdt == dnnl_bf16
+                                    || sdt == dnnl_s8 || sdt == dnnl_u8))) {
+        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+        return;
+    }
+
+    if (engine_tgt_kind == dnnl_gpu) {
+        // GPU does not support run-time dims and zero-points
+        if (prb->runtime_dim_mask != 0 || !prb->attr.zero_points.is_def()
+                || prb->attr.oscale.runtime) {
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            return;
+        }
+    }
 }
 
+int doit(const prb_t *prb, res_t *res) {
+    if (bench_mode == LIST) return res->state = LISTED, OK;
+
+    check_known_skipped_case(prb, res);
+    if (res->state == SKIPPED) return OK;
+
+    //                                       ___________________
+    //                                      |                   |
+    //                                      | performance timer |
+    //                                      |___________________|
+    //                                                |
+    //   _______________           ______________     V     ________________
+    //  |               | oneDNN  |              | oneDNN  |                |
+    //  | dt_in fmt_ref |-------->| dt_in fmt_in |-------->| dt_out fmt_out |
+    //  |_______________|         |______________|    ^    |________________|
+    //           |                                    |            |
+    //  benchdnn |<-------------------------------- scales         | oneDNN
+    //   ________V_______                                   _______V________
+    //  |                |                                 |                |
+    //  | dt_out fmt_ref |         <= compare =>           | dt_out fmt_ref |
+    //  |________________|                                 |________________|
+    //
+    // Steps:
+    // 1. fill scales
+    // 2. create target reorder primitive
+    // 3. create memories
+    // 4. fill input memory
+    // 5. execute oneDNN and benchdnn reorders / q10n
+    // 6. compare results
+    // 7. performance measurement
+
+    /* Step 2: create target reorder primitive */
+    dnnl_primitive_t rp {};
+    SAFE(init_prim(&rp, init_pd, prb, res), WARN);
+    if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
+
+    const_dnnl_primitive_desc_t const_pd;
+    DNN_SAFE(dnnl_primitive_get_primitive_desc(rp, &const_pd), CRIT);
+
+    if (dnn_mem_t::check_mem_size(const_pd) != OK) {
+        DNN_SAFE_V(dnnl_primitive_destroy(rp));
+        return res->state = SKIPPED, res->reason = NOT_ENOUGH_RAM, OK;
+    }
+
+    const auto q = [&](int index = 0) -> const dnnl_memory_desc_t & {
+        return *dnnl_primitive_desc_query_md(
+                const_pd, dnnl_query_exec_arg_md, index);
+    };
+
+    /* Step 3: create memories */
+    dnnl_memory_desc_t src_md, dst_md;
+    if (prb->runtime_dim_mask != 0) {
+        // re-create memory descriptors with defined dims
+        const auto &rc = prb->reorder;
+        SAFE(init_md(&src_md, prb->ndims, rc.dims.data(), prb->conf_in->dt,
+                     rc.tag_in),
+                CRIT);
+        SAFE(init_md(&dst_md, prb->ndims, rc.dims.data(), prb->conf_out->dt,
+                     rc.tag_out),
+                CRIT);
+    } else {
+        src_md = q(DNNL_ARG_SRC);
+        dst_md = q(DNNL_ARG_DST);
+    }
+    const auto &scratchpad_md = q(DNNL_ARG_SCRATCHPAD);
+
+    const auto tag = tag::abx;
+    const auto src_dt = src_md.data_type;
+    const auto dst_dt = dst_md.data_type;
+
+    dnnl_engine_t src_engine, dst_engine;
+    DNN_SAFE(dnnl_primitive_desc_query(
+                     const_pd, dnnl_query_reorder_src_engine, 0, &src_engine),
+            WARN);
+    DNN_SAFE(dnnl_primitive_desc_query(
+                     const_pd, dnnl_query_reorder_dst_engine, 0, &dst_engine),
+            WARN);
+
+    dnn_mem_t src_dt_in_fmt_ref(src_md, src_dt, tag, src_engine);
+    dnn_mem_t src_dt_in_fmt_in(src_md, src_engine);
+
+    dnn_mem_t scratchpad_dt(scratchpad_md, src_engine);
+
+    dnn_mem_t dst_dt_out_fmt_ref(dst_md, dst_dt, tag, dst_engine);
+    dnn_mem_t dst_dt_out_fmt_out(dst_md, dst_engine);
+
+    /* Step 4: fill input memory */
+    SAFE(fill_memory(prb, SRC, src_dt_in_fmt_ref), WARN);
+
+    /* Step 5: execute necessary reorders */
+    SAFE(src_dt_in_fmt_in.reorder(src_dt_in_fmt_ref), WARN);
+
+    if (prb->attr.post_ops.find(attr_t::post_ops_t::kind_t::SUM) >= 0) {
+        SAFE(fill_memory(prb, DST, dst_dt_out_fmt_ref), WARN);
+        SAFE(dst_dt_out_fmt_out.reorder(dst_dt_out_fmt_ref), WARN);
+    }
+
+    dnn_mem_t scales, src_zero_points_m, dst_zero_points_m;
+    maybe_prepare_runtime_scales(
+            scales, prb->attr, get_n_scales(prb), prb->scales);
+    maybe_prepare_runtime_zero_points(
+            src_zero_points_m, prb->attr, DNNL_ARG_SRC, 1, prb->src_zp);
+    maybe_prepare_runtime_zero_points(
+            dst_zero_points_m, prb->attr, DNNL_ARG_DST, 1, prb->dst_zp);
+
+    args_t args;
+    args.set(DNNL_ARG_FROM, src_dt_in_fmt_in);
+    args.set(DNNL_ARG_TO, dst_dt_out_fmt_out);
+    args.set(DNNL_ARG_SCRATCHPAD, scratchpad_dt);
+    args.set(DNNL_ARG_ATTR_OUTPUT_SCALES, scales);
+    args.set(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_points_m);
+    args.set(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zero_points_m);
+
+    SAFE(execute_and_wait(rp, args), WARN);
+
+    /* Step 6: check correctness */
+    if (bench_mode & CORR) {
+        if (prb->is_reorder_with_compensation()) {
+            /* "bootstrap" algorithm: compare to another oneDNN reorder. use
+             * this when benchdnn does not know about all details of the data
+             * layout, as is the case for compensated weights formats. */
+
+            /* Step 5a: oneDNN reorder from ref format to output format */
+            dnnl_memory_extra_desc_t dst_extra {};
+            fill_memory_extra(prb, dst_extra);
+            dnn_mem_t ref_dst_dt_out_fmt_out(dst_md, dst_engine);
+            ref_dst_dt_out_fmt_out.md_.extra = dst_extra;
+
+            SAFE(ref_dst_dt_out_fmt_out.reorder(src_dt_in_fmt_ref), WARN);
+
+            /* Step 5b: compare results (expect bit-wise exactness) */
+            SAFE(compare_bootstrap(
+                         ref_dst_dt_out_fmt_out, dst_dt_out_fmt_out, res),
+                    WARN);
+        } else {
+            /* (default) "reference" algorithm: compare to benchdnn reorder */
+
+            /* Step 5b: execute benchdnn reorder */
+            SAFE(ref_reorder(prb, dst_dt_out_fmt_ref, src_dt_in_fmt_ref), WARN);
+
+            /* Step 5c: compare benchdnn and oneDNN output */
+            dnn_mem_t dst_dt_out(dst_md, dst_dt, tag, dst_engine);
+            SAFE(dst_dt_out.reorder(dst_dt_out_fmt_out), WARN);
+            SAFE(compare(prb, dst_dt_out_fmt_ref, dst_dt_out, res), WARN);
+        }
+    }
+
+    /* Step 7: performance measurement */
+    measure_perf(res->timer, rp, args);
+
+    DNN_SAFE_V(dnnl_primitive_destroy(rp));
+
+    return OK;
 }
+
+} // namespace reorder

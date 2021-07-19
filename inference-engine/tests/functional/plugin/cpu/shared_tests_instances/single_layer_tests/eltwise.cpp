@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Intel Corporation
+// Copyright (C) 2018-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -28,6 +28,7 @@ std::vector<std::vector<std::vector<size_t>>> inShapes = {
 std::vector<InferenceEngine::Precision> netPrecisions = {
         InferenceEngine::Precision::FP32,
         InferenceEngine::Precision::FP16,
+        InferenceEngine::Precision::I32,
 };
 
 std::vector<ngraph::helpers::InputLayerType> secondaryInputTypes = {

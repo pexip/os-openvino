@@ -1,11 +1,10 @@
-// Copyright (C) 2020 Intel Corporation
+// Copyright (C) 2018-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <fstream>
 
 #include "common_test_utils/ngraph_test_utils.hpp"
-#include <functional_test_utils/skip_tests_config.hpp>
 #include "gtest/gtest.h"
 #include "ie_core.hpp"
 
@@ -47,8 +46,9 @@ protected:
     }
 };
 
+#ifdef NGRAPH_ONNX_IMPORT_ENABLE
+
 TEST_F(SerializationDeterministicityTest, BasicModel) {
-    SKIP_IF_CURRENT_TEST_IS_DISABLED()
     const std::string model = IR_SERIALIZATION_MODELS_PATH "add_abc.prototxt";
 
     InferenceEngine::Core ie;
@@ -65,8 +65,27 @@ TEST_F(SerializationDeterministicityTest, BasicModel) {
     ASSERT_TRUE(files_equal(bin_1, bin_2));
 }
 
+TEST_F(SerializationDeterministicityTest, ModelWithMultipleLayers) {
+    const std::string model =
+        IR_SERIALIZATION_MODELS_PATH "addmul_abc.prototxt";
+
+    InferenceEngine::Core ie;
+    auto expected = ie.ReadNetwork(model);
+    expected.serialize(m_out_xml_path_1, m_out_bin_path_1);
+    expected.serialize(m_out_xml_path_2, m_out_bin_path_2);
+
+    std::ifstream xml_1(m_out_xml_path_1, std::ios::in | std::ios::binary);
+    std::ifstream bin_1(m_out_bin_path_1, std::ios::in | std::ios::binary);
+    std::ifstream xml_2(m_out_xml_path_2, std::ios::in | std::ios::binary);
+    std::ifstream bin_2(m_out_bin_path_2, std::ios::in | std::ios::binary);
+
+    ASSERT_TRUE(files_equal(xml_1, xml_2));
+    ASSERT_TRUE(files_equal(bin_1, bin_2));
+}
+
+#endif
+
 TEST_F(SerializationDeterministicityTest, ModelWithMultipleOutputs) {
-    SKIP_IF_CURRENT_TEST_IS_DISABLED()
     const std::string model =
         IR_SERIALIZATION_MODELS_PATH "split_equal_parts_2d.xml";
     const std::string weights =
@@ -86,27 +105,7 @@ TEST_F(SerializationDeterministicityTest, ModelWithMultipleOutputs) {
     ASSERT_TRUE(files_equal(bin_1, bin_2));
 }
 
-TEST_F(SerializationDeterministicityTest, ModelWithMultipleLayers) {
-    SKIP_IF_CURRENT_TEST_IS_DISABLED()
-    const std::string model =
-        IR_SERIALIZATION_MODELS_PATH "addmul_abc.prototxt";
-
-    InferenceEngine::Core ie;
-    auto expected = ie.ReadNetwork(model);
-    expected.serialize(m_out_xml_path_1, m_out_bin_path_1);
-    expected.serialize(m_out_xml_path_2, m_out_bin_path_2);
-
-    std::ifstream xml_1(m_out_xml_path_1, std::ios::in | std::ios::binary);
-    std::ifstream bin_1(m_out_bin_path_1, std::ios::in | std::ios::binary);
-    std::ifstream xml_2(m_out_xml_path_2, std::ios::in | std::ios::binary);
-    std::ifstream bin_2(m_out_bin_path_2, std::ios::in | std::ios::binary);
-
-    ASSERT_TRUE(files_equal(xml_1, xml_2));
-    ASSERT_TRUE(files_equal(bin_1, bin_2));
-}
-
 TEST_F(SerializationDeterministicityTest, ModelWithConstants) {
-    SKIP_IF_CURRENT_TEST_IS_DISABLED()
     const std::string model =
         IR_SERIALIZATION_MODELS_PATH "add_abc_initializers.xml";
     const std::string weights =

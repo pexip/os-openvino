@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018 Intel Corporation
+* Copyright 2018-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,38 +14,78 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_REF_RNN_HPP
-#define CPU_REF_RNN_HPP
+#ifndef CPU_RNN_REF_RNN_HPP
+#define CPU_RNN_REF_RNN_HPP
 
 #include <assert.h>
 
-#include "c_types_map.hpp"
-#include "memory_tracking.hpp"
-#include "type_helpers.hpp"
-#include "utils.hpp"
+#include "common/c_types_map.hpp"
+#include "common/memory_tracking.hpp"
+#include "common/primitive.hpp"
+#include "common/type_helpers.hpp"
+#include "common/utils.hpp"
 
-#include "../gemm/os_blas.hpp"
+#include "cpu/gemm/gemm.hpp"
+#include "cpu/gemm/os_blas.hpp"
 
-#include "cpu_rnn_pd.hpp"
-#include "rnn_utils.hpp"
-#include "jit_uni_rnn_common_postgemm_dispatcher.hpp"
+#include "cpu/rnn/cpu_rnn_pd.hpp"
+#include "cpu/rnn/postgemm_dispatcher.hpp"
+#include "cpu/rnn/rnn_utils.hpp"
 
-namespace mkldnn {
+namespace dnnl {
 namespace impl {
 namespace cpu {
 
-template <alg_kind_t alg_kind, prop_kind_t prop_kind>
-float activation(float s, float alpha, float cliping, float dd);
+namespace {
+template <typename gates_t, typename acc_t>
+// The loop body needs to be put in a function as some versions of icc have
+// an issue with lambdas & macros inside omp simd loops
+inline void body_loop(int i, int k, const gates_t *ws_gates, acc_t *diff_bias,
+        const rnn_utils::rnn_conf_t &rnn) {
+    for (int j = 0; j < rnn.mb; j++)
+        diff_bias[i * rnn.dhc + k]
+                += ws_gates[j * rnn.scratch_gates_ld + i * rnn.dhc + k];
+}
+} // namespace
+
+template <typename gates_t, typename acc_t>
+void gates_reduction(const rnn_utils::rnn_conf_t &rnn, const gates_t *ws_gates_,
+        acc_t *diff_bias_) {
+
+    // @todo block k on simd-width to enable vectorization in
+    // parallel_nd path
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP && _OPENMP >= 201307 \
+        && defined __INTEL_COMPILER && __INTEL_COMPILER != 1910
+#pragma omp parallel for simd collapse(2)
+    for (int i = 0; i < rnn.n_gates; i++)
+        for (int k = 0; k < rnn.dhc; k++)
+            body_loop(i, k, ws_gates_, diff_bias_, rnn);
+#else
+    parallel_nd(rnn.n_gates, rnn.dhc,
+            [&](int i, int k) { body_loop(i, k, ws_gates_, diff_bias_, rnn); });
+#endif
+}
 
 template <prop_kind_t aprop, impl::data_type_t src_type,
-        impl::data_type_t weights_type>
-struct _ref_rnn_common_t : public cpu_primitive_t {
-    typedef typename prec_traits<src_type>::type src_data_t;
-    typedef typename prec_traits<weights_type>::type weights_data_t;
-    typedef typename utils::conditional<src_type == data_type::u8, int32_t,
-            float>::type acc_data_t;
+        impl::data_type_t weights_type, impl::data_type_t acc_type>
+struct _ref_rnn_common_t : public primitive_t {
+    static constexpr impl::data_type_t scratch_type
+            = aprop == prop_kind::forward ? acc_type : src_type;
 
-    using class_name = _ref_rnn_common_t<aprop, src_type, weights_type>;
+    /* These types are defined for each element in the cell execution */
+    typedef typename prec_traits<src_type>::type src_layer_t;
+    typedef typename prec_traits<src_type>::type src_iter_t;
+    typedef typename prec_traits<src_type>::type dst_layer_t;
+    typedef typename prec_traits<src_type>::type dst_iter_t;
+    typedef typename prec_traits<weights_type>::type weights_t;
+    typedef typename prec_traits<src_type>::type gemm_data_t;
+    typedef typename prec_traits<acc_type>::type gemm_acc_t;
+    typedef typename prec_traits<scratch_type>::type scratch_t;
+    typedef typename prec_traits<src_type>::type ht_t;
+    typedef typename prec_traits<src_type>::type gates_t;
+
+    using class_name
+            = _ref_rnn_common_t<aprop, src_type, weights_type, acc_type>;
 
     typedef rnn_cell_execution_sig((class_name::*cell_execution_f));
     typedef rnn_grid_execution_sig((class_name::*grid_execution_f));
@@ -60,20 +100,16 @@ struct _ref_rnn_common_t : public cpu_primitive_t {
                     cpu_rnn_fwd_pd_t, cpu_rnn_bwd_pd_t>::type;
 
     struct pd_t : public base_pd_t {
-        pd_t(engine_t *engine, const rnn_desc_t *adesc,
-                const primitive_attr_t *attr,
-                const typename pd_t::hint_class *hint_pd)
-            : base_pd_t(engine, adesc, attr, hint_pd) {}
+        using base_pd_t::base_pd_t;
 
-        DECLARE_COMMON_PD_T("ref:any", class_name);
+        DECLARE_COMMON_PD_T("ref:any", class_name, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init() {
+        status_t init(engine_t *engine) {
             using namespace prop_kind;
             using namespace utils;
-            using namespace memory_format;
+            using namespace format_tag;
             using namespace rnn_utils;
-            assert(this->engine()->kind() == engine_kind::cpu);
-            const alg_kind_t cell_kind = this->desc()->cell_desc.cell_kind;
+            const alg_kind_t cell_kind = this->desc()->cell_kind;
 
             data_type_t src_layer_dt = this->desc()->src_layer_desc.data_type;
             data_type_t weights_iter_dt
@@ -83,65 +119,92 @@ struct _ref_rnn_common_t : public cpu_primitive_t {
 
             bool ok = true
                     && one_of(cell_kind, alg_kind::vanilla_rnn,
-                               alg_kind::vanilla_lstm, alg_kind::vanilla_gru,
-                               alg_kind::gru_linear_before_reset)
+                            alg_kind::vanilla_lstm, alg_kind::vanilla_gru,
+                            alg_kind::lbr_gru)
                     && IMPLICATION(aprop == prop_kind::forward,
-                               one_of(this->desc()->prop_kind, forward_training,
-                                           forward_inference))
+                            one_of(this->desc()->prop_kind, forward_training,
+                                    forward_inference))
                     && IMPLICATION(aprop == backward,
-                               one_of(this->desc()->prop_kind, backward))
+                            one_of(this->desc()->prop_kind, backward))
                     && src_layer_dt == src_type
                     && everyone_is(
-                               weights_type, weights_iter_dt, weights_layer_dt)
+                            weights_type, weights_iter_dt, weights_layer_dt)
                     && this->set_default_params() == status::success
                     && this->with_bias();
-            if (!ok)
-                return status::unimplemented;
+            if (!ok) return status::unimplemented;
 
-            init_conf(rnn_, *this->desc(), this->src_pd(0), this->src_pd(1),
-                    this->weights_pd(0), this->weights_pd(1), this->dst_pd(0));
+            ok = init_conf<class_name>(rnn_, *this->desc(), this->src_md(0),
+                    this->src_md(1), this->src_md(2), this->weights_md(0),
+                    this->weights_md(1),
+                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION), this->dst_md(0),
+                    this->dst_md(1), this->dst_md(2));
+            if (!ok) return status::unimplemented;
 
-            if (rnn_.dt_conf == all_f32)
-                ok = ok && this->attr()->has_default_values();
+            /* check that only supported attr have been passed */
+            primitive_attr_t::skip_mask_t attr_mask
+                    = primitive_attr_t::skip_mask_t::rnn_tparams;
+            if (weights_layer_dt == data_type::s8)
+                attr_mask = attr_mask
+                        | primitive_attr_t::skip_mask_t::rnn_data_qparams
+                        | primitive_attr_t::skip_mask_t::rnn_weights_qparams;
+            ok = ok && this->attr()->has_default_values(attr_mask);
+            if (!ok) return status::unimplemented;
 
             // Set weights descriptors to desired format
-            memory_desc_t weights_layer_md = *(this->weights_layer_pd_.desc());
-            CHECK(set_expected_desc(rnn_, weights_layer_md, false));
-            cpu_memory_t::pd_t new_weights_layer_pd(
-                    this->engine_, &weights_layer_md);
-            if (this->weights_layer_pd_.desc()->format == any) {
-                this->weights_layer_pd_ = new_weights_layer_pd;
-            } else if (this->weights_layer_pd_.desc()->format == rnn_packed) {
-                if (!this->weights_layer_pd_.is_equal(&new_weights_layer_pd))
+            memory_desc_t new_weights_layer_md = *this->weights_md(0);
+            CHECK(set_expected_desc(rnn_, new_weights_layer_md,
+                    rnn_utils::weights_type_t::layer));
+            if (this->weights_layer_md_.format_kind == format_kind::any) {
+                this->weights_layer_md_ = new_weights_layer_md;
+            } else if (this->weights_layer_md_.format_kind
+                    == format_kind::rnn_packed) {
+                if (this->weights_layer_md_ != new_weights_layer_md)
                     return status::unimplemented;
             }
 
-            memory_desc_t weights_iter_md = *(this->weights_iter_pd_.desc());
-            CHECK(set_expected_desc(rnn_, weights_iter_md, true));
-            cpu_memory_t::pd_t new_weights_iter_pd(
-                    this->engine_, &weights_iter_md);
-            if (this->weights_iter_pd_.desc()->format == any) {
-                this->weights_iter_pd_ = new_weights_iter_pd;
-            } else if (this->weights_iter_pd_.desc()->format == rnn_packed) {
-                if (!this->weights_iter_pd_.is_equal(&new_weights_iter_pd))
+            memory_desc_t new_weights_iter_md = *this->weights_md(1);
+            CHECK(set_expected_desc(rnn_, new_weights_iter_md,
+                    rnn_utils::weights_type_t::iter));
+            if (this->weights_iter_md_.format_kind == format_kind::any) {
+                this->weights_iter_md_ = new_weights_iter_md;
+            } else if (this->weights_iter_md_.format_kind
+                    == format_kind::rnn_packed) {
+                if (this->weights_iter_md_ != new_weights_iter_md)
                     return status::unimplemented;
+            }
+
+            if (rnn_.is_lstm_projection) {
+                memory_desc_t new_weights_projection_md
+                        = *this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION);
+                CHECK(set_expected_desc(rnn_, new_weights_projection_md,
+                        rnn_utils::weights_type_t::projection));
+                if (this->weights_projection_md_.format_kind
+                        == format_kind::any) {
+                    this->weights_projection_md_ = new_weights_projection_md;
+                } else if (this->weights_projection_md_.format_kind
+                        == format_kind::rnn_packed) {
+                    if (this->weights_projection_md_
+                            != new_weights_projection_md)
+                        return status::unimplemented;
+                }
             }
 
             CHECK(this->check_layout_consistency());
 
-            set_conf(rnn_, *this->desc(), this->weights_pd(0),
-                    this->weights_pd(1), this->diff_weights_pd(0),
-                    this->diff_weights_pd(1));
+            set_conf<class_name>(rnn_, *this->desc(), this->weights_md(0),
+                    this->weights_md(1),
+                    this->arg_md(DNNL_ARG_WEIGHTS_PROJECTION),
+                    this->diff_weights_md(0), this->diff_weights_md(1),
+                    this->arg_md(DNNL_ARG_DIFF_WEIGHTS_PROJECTION));
 
-            size_t scratchpad_sz{0}, ws_sz{0};
+            size_t scratchpad_sz {0}, ws_sz {0};
             get_scratchpad_and_workspace_sizes(rnn_, scratchpad_sz, ws_sz);
 
-            // initialize the workspace_pd if needed
+            // initialize the workspace if needed
             if (rnn_.is_training) {
-                dims_t ws_dims = { (dim_t)ws_sz };
-                memory_desc_t ws_d;
-                mkldnn_memory_desc_init(&ws_d, 1, ws_dims, data_type::u8, x);
-                this->ws_pd_ = cpu_memory_t::pd_t(this->engine(), &ws_d);
+                dims_t ws_dims = {(dim_t)ws_sz};
+                dnnl_memory_desc_init_by_tag(&this->ws_md_, 1, ws_dims,
+                        data_type::u8, format_tag::x);
             }
 
             init_scratchpad(scratchpad_sz);
@@ -155,24 +218,33 @@ struct _ref_rnn_common_t : public cpu_primitive_t {
         void init_scratchpad(size_t scratchpad_sz) {
             using namespace memory_tracking::names;
             auto scratchpad = this->scratchpad_registry().registrar();
-            scratchpad.book(key_rnn_space, sizeof(float) * scratchpad_sz, 4096);
+            scratchpad.template book<float>(key_rnn_space, scratchpad_sz, 4096);
 
             int max_nparts = this->cell_kind() == alg_kind::vanilla_gru ? 2 : 1;
             int ptr_wei_sz = rnn_.n_layer * rnn_.n_dir * max_nparts;
-            scratchpad.book(key_rnn_ptrs_wei_layer,
-                    sizeof(float *) * ptr_wei_sz);
-            scratchpad.book(key_rnn_ptrs_wei_iter,
-                    sizeof(float *) * ptr_wei_sz);
-            scratchpad.book(key_rnn_ptrs_bia,
-                    sizeof(float *) * ptr_wei_sz);
+            scratchpad.template book<float *>(
+                    key_rnn_ptrs_wei_layer, ptr_wei_sz);
+            scratchpad.template book<float *>(
+                    key_rnn_ptrs_wei_iter, ptr_wei_sz);
+            scratchpad.template book<float *>(
+                    key_rnn_ptrs_wei_projection, ptr_wei_sz);
+            scratchpad.template book<float *>(key_rnn_ptrs_bia, ptr_wei_sz);
+            scratchpad.template book<scratch_t>(
+                    key_rnn_gates, rnn_.scratch_gates_size);
+            scratchpad.template book<ht_t>(key_rnn_ht, rnn_.scratch_ht_size);
+            scratchpad.template book<gemm_acc_t>(
+                    key_rnn_diff_ht, rnn_.scratch_diff_ht_size);
+            scratchpad.template book<scratch_t>(
+                    key_rnn_cell, rnn_.scratch_cell_size);
         }
     };
 
-    _ref_rnn_common_t(const pd_t *apd, const input_vector &inputs,
-            const output_vector &outputs)
-        : cpu_primitive_t(apd, inputs, outputs, true), rnn_postgemm_(nullptr) {
+    _ref_rnn_common_t(const pd_t *apd)
+        : primitive_t(apd), rnn_postgemm_(nullptr) {}
+
+    status_t init(engine_t *engine) override {
         /// @todo set max_feature_size assuming that we limit the number of
-        /// iterations and layer to one if slc != dic and sic != dic
+        /// iterations and layer to one if slc != dhc and sic != dhc
         /// respectively
 
         bias_preparation_func = &class_name::bias_prepare;
@@ -194,44 +266,51 @@ struct _ref_rnn_common_t : public cpu_primitive_t {
         set_gemm_funcs(pd()->rnn_.use_layer_packed_gemm, gemm_layer_func,
                 weights_layer_assign_func);
 
-        rnn_postgemm_ = new rnn_postgemm_dispatcher<aprop, src_type>(pd()->rnn_, pd());
+        if (pd()->rnn_.is_lstm_projection) {
+            set_gemm_funcs(pd()->rnn_.use_projection_packed_gemm,
+                    gemm_projection_func, weights_projection_assign_func);
+        }
+
+        rnn_postgemm_ = new rnn_postgemm_dispatcher<aprop, src_type,
+                scratch_type, acc_type>(pd()->rnn_, pd());
         assert(rnn_postgemm_ != nullptr);
         switch (pd()->cell_kind()) {
-        case alg_kind::vanilla_rnn:
-        case alg_kind::vanilla_lstm:
-            cell_func = &class_name::cell_execution;
-            break;
-        case alg_kind::vanilla_gru:
-            cell_func = &class_name::cell_execution_gru;
-            break;
-        case alg_kind::gru_linear_before_reset:
-            cell_func = &class_name::cell_execution_gru_lbr;
-            break;
-        default: break;
+            case alg_kind::vanilla_rnn:
+            case alg_kind::vanilla_lstm:
+                cell_func = &class_name::cell_execution;
+                break;
+            case alg_kind::vanilla_gru:
+                cell_func = &class_name::cell_execution_gru;
+                break;
+            case alg_kind::lbr_gru:
+                cell_func = &class_name::cell_execution_gru_lbr;
+                break;
+            default: break;
         }
 
         grid_computation = &class_name::linear_execution;
 
         size_t scratchpad_size, workspace_size;
-        rnn_utils::set_offsets(pd()->rnn_, ws_gates_offset_, ws_states_offset_,
-                ws_c_states_offset_, ws_diff_states_offset_,
-                ws_grid_comp_offset_, ws_cell_comp_offset_,
-                ws_bias_offset_, scratchpad_size, workspace_size);
+        rnn_utils::set_offsets(pd()->rnn_, ws_gates_offset_, ws_ht_offset_,
+                ws_states_layer_offset_, ws_states_iter_offset_,
+                ws_states_iter_c_offset_, ws_diff_states_layer_offset_,
+                ws_diff_states_iter_offset_, ws_diff_states_iter_c_offset_,
+                ws_grid_comp_offset_, ws_bias_offset_, scratch_gates_offset_,
+                scratch_ht_offset_, scratch_diff_ht_offset_,
+                scratch_cell_offset_, scratchpad_size, workspace_size);
+
+        return status::success;
     }
 
-    ~_ref_rnn_common_t() {
-        delete rnn_postgemm_;
-    }
+    ~_ref_rnn_common_t() { delete rnn_postgemm_; }
 
-    // typedef typename prec_traits::type data_t;
-
-    virtual void execute(event_t *e) const {
-        execute_();
-        e->set_state(event_t::ready);
+    status_t execute(const exec_ctx_t &ctx) const override {
+        execute_(ctx);
+        return status::success;
     }
 
 private:
-    void execute_() const;
+    void execute_(const exec_ctx_t &ctx) const;
     rnn_grid_execution_sig(linear_execution);
     rnn_cell_execution_sig(cell_execution);
     rnn_cell_execution_sig(cell_execution_gru);
@@ -243,42 +322,53 @@ private:
     rnn_weights_assign_sig(assign_weights);
     rnn_weights_assign_sig(assign_packed_weights);
 
-    float (*activation_func)(float dd, float s, float alpha, float cliping);
+    float (*activation_func)(float s, float alpha, float cliping);
 
     void copy_init_layer(const rnn_utils::rnn_conf_t &rnn,
-            src_data_t *ws_states_, float *ws_diff_states_,
-            const src_data_t *xt_, const float *diff_dst_layer) const;
+            src_layer_t *ws_states_layer_, gemm_acc_t *ws_diff_states_layer_,
+            const src_layer_t *xt_, const gemm_acc_t *diff_dst_layer) const;
 
-    template <typename input_data_t>
+    template <typename input_t>
     void copy_init_iter(const rnn_utils::rnn_conf_t &rnn,
-            src_data_t *ws_states_, float *ws_c_states, float *ws_diff_states_,
-            const input_data_t *firstit_states_,
-            const float *diff_dst_iter) const;
+            src_iter_t *ws_states_iter_, float *ws_states_iter_c_,
+            gemm_acc_t *ws_diff_states_iter_,
+            gemm_acc_t *ws_diff_states_iter_c_, const input_t *src_iter_,
+            const float *src_iter_c_, const gemm_acc_t *diff_dst_iter_,
+            const float *diff_dst_iter_c_) const;
 
-    template <typename dst_data_t>
+    template <typename dst_layer_dt, typename dst_iter_dt>
     void copy_res_layer(const rnn_utils::rnn_conf_t &rnn,
-            dst_data_t *dst_layer_, float *diff_src_layer,
-            const src_data_t *ws_states_, const float *ws_diff_states_) const;
+            dst_layer_dt *dst_layer_, gemm_acc_t *diff_src_layer_,
+            const dst_iter_dt *dst_iter_, const src_layer_t *ws_states_layer_,
+            const gemm_acc_t *ws_diff_states_layer_) const;
 
-    template <typename output_data_t>
+    template <typename prim_dst_iter_t, typename prim_dst_layer_t>
     void copy_res_iter(const rnn_utils::rnn_conf_t &rnn,
-            output_data_t *dst_iter_, float *diff_src_iter,
-            const src_data_t *ws_states_, float *ws_c_states,
-            const float *ws_diff_states_) const;
+            prim_dst_iter_t *dst_iter_, float *dst_iter_c_,
+            gemm_acc_t *diff_src_iter_, float *diff_src_iter_c_,
+            const prim_dst_layer_t *dst_layer_,
+            const src_iter_t *ws_states_iter_, const float *ws_states_iter_c,
+            const gemm_acc_t *ws_diff_states_iter_,
+            const gemm_acc_t *ws_diff_states_iter_c_) const;
 
-    void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
-            const acc_data_t *ws_gates_, float *diff_bias_) const;
-
-    const pd_t *pd() const { return (const pd_t *)primitive_t::pd(); }
+    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     size_t ws_gates_offset_;
-    size_t ws_states_offset_;
-    size_t ws_c_states_offset_;
+    size_t ws_ht_offset_;
+    size_t ws_states_layer_offset_;
+    size_t ws_states_iter_offset_;
+    size_t ws_states_iter_c_offset_;
     size_t ws_bias_offset_;
-    size_t ws_diff_states_offset_;
+    size_t ws_diff_states_layer_offset_;
+    size_t ws_diff_states_iter_offset_;
+    size_t ws_diff_states_iter_c_offset_;
     size_t ws_grid_comp_offset_;
-    size_t ws_cell_comp_offset_;
-    rnn_postgemm_dispatcher<aprop,src_type> *rnn_postgemm_;
+    size_t scratch_gates_offset_;
+    size_t scratch_ht_offset_;
+    size_t scratch_diff_ht_offset_;
+    size_t scratch_cell_offset_;
+    rnn_postgemm_dispatcher<aprop, src_type, scratch_type, acc_type>
+            *rnn_postgemm_;
 
     grid_execution_f grid_computation;
     cell_execution_f cell_func;
@@ -287,17 +377,27 @@ private:
     bias_finalize_t bias_finalization_func;
     weights_assign_t weights_layer_assign_func;
     weights_assign_t weights_iter_assign_func;
+    weights_assign_t weights_projection_assign_func;
 
     gemm_t gemm_layer_func;
     gemm_t gemm_iter_func;
+    gemm_t gemm_projection_func;
 };
 
-using ref_rnn_fwd_f32_t = _ref_rnn_common_t<prop_kind::forward, data_type::f32, data_type::f32>;
-using ref_rnn_bwd_f32_t = _ref_rnn_common_t<prop_kind::backward, data_type::f32, data_type::f32>;
-using ref_rnn_fwd_u8s8_t = _ref_rnn_common_t<prop_kind::forward, data_type::u8, data_type::s8>;
-}
-}
-}
+using ref_rnn_fwd_f32_t = _ref_rnn_common_t<prop_kind::forward, data_type::f32,
+        data_type::f32, data_type::f32>;
+using ref_rnn_bwd_f32_t = _ref_rnn_common_t<prop_kind::backward, data_type::f32,
+        data_type::f32, data_type::f32>;
+using ref_rnn_fwd_bf16_t = _ref_rnn_common_t<prop_kind::forward,
+        data_type::bf16, data_type::bf16, data_type::f32>;
+using ref_rnn_bwd_bf16_t = _ref_rnn_common_t<prop_kind::backward,
+        data_type::bf16, data_type::bf16, data_type::f32>;
+using ref_rnn_fwd_u8s8_t = _ref_rnn_common_t<prop_kind::forward, data_type::u8,
+        data_type::s8, data_type::s32>;
+
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl
 #endif
 
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s
+// vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s

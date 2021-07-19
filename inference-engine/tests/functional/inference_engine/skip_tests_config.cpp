@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Intel Corporation
+// Copyright (C) 2018-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,11 +14,5 @@ std::vector<std::string> disabledTestPatterns() {
         ".*TransformationTests\\.ConstFoldingPriorBoxClustered.*",
         // TODO: task 32568, enable after supporting constants outputs in plugins
         ".*TransformationTests\\.ConstFoldingPriorBox.*",
-#if !defined(ENABLE_V10_SERIALIZE)
-        // Disable tests for serialization
-        ".*SerializationTest.*",
-        ".*CustomOpsSerializationTest.*",
-        ".*SerializationDeterministicityTest.*",
-#endif
     };
 }

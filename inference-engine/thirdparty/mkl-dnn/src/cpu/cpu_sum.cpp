@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2018 Intel Corporation
+* Copyright 2017-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,41 +14,69 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu_engine.hpp"
-#include "cpu_memory.hpp"
-#include "type_helpers.hpp"
+#include "cpu/cpu_engine.hpp"
 
-#include "cpu/cpu_sum.hpp"
 #include "cpu/ref_sum.hpp"
 #include "cpu/simple_sum.hpp"
-#include "jit_avx512_core_bf16_sum.hpp"
+#include "common/dnnl_sel_build.hpp"
 
-namespace mkldnn {
+#if DNNL_X64
+#include "cpu/x64/jit_avx512_core_bf16_sum.hpp"
+using namespace dnnl::impl::cpu::x64;
+#endif
+
+namespace dnnl {
 namespace impl {
 namespace cpu {
 
-using spd_create_f = mkldnn::impl::engine_t::sum_primitive_desc_create_f;
+using spd_create_f = dnnl::impl::engine_t::sum_primitive_desc_create_f;
+using namespace dnnl::impl::data_type;
 
 namespace {
-#define INSTANCE(...) __VA_ARGS__::pd_t::create
-static const spd_create_f cpu_sum_impl_list[] = {
-#ifdef ENABLE_UNUSED_PRIM
-    INSTANCE(jit_bf16_sum_t<data_type::bf16, data_type::bf16>),
-    INSTANCE(jit_bf16_sum_t<data_type::bf16, data_type::f32>),
-    INSTANCE(simple_sum_t<data_type::bf16, data_type::bf16>),
-    INSTANCE(simple_sum_t<data_type::bf16, data_type::f32>),
+// clang-format off
+#if defined(SELECTIVE_BUILD_ANALYZER)
+
+DNNL_DEF_PD_BUILDER(spd_builder,
+            spd_create_f,
+            dnnl::impl::sum_pd_t **,
+            dnnl::impl::engine_t *,
+            const dnnl::impl::primitive_attr_t *,
+            const dnnl::impl::memory_desc_t *,
+            int,
+            const float *,
+            const dnnl::impl::memory_desc_t *);
+
+# define SPD_INSTANCE(...) REG_DNNL_FN(spd_builder, __VA_ARGS__)
+
+#else   // SELECTIVE_BUILD == ON || SELECTIVE_BUILD == OFF
+
+# define SPD_INSTANCE REG_DNNL_FN
+
 #endif
-    INSTANCE(simple_sum_t<data_type::f32, data_type::f32>),
-    INSTANCE(ref_sum_t),
-    nullptr,
+
+#define INSTANCE SPD_INSTANCE
+#define INSTANCE_X64(...) DNNL_X64_ONLY(INSTANCE(__VA_ARGS__))
+const spd_create_f cpu_sum_impl_list[] = {
+#ifdef ENABLE_UNUSED_PRIM
+        INSTANCE_X64(jit_bf16_sum_t, bf16, bf16)
+        INSTANCE_X64(jit_bf16_sum_t, bf16, f32)
+        INSTANCE(simple_sum_t, bf16)
+        INSTANCE(simple_sum_t, bf16, f32)
+        INSTANCE(simple_sum_t, f32)
+        INSTANCE(ref_sum_t)
+#endif
+        nullptr,
 };
+#undef SPD_INSTANCE
+#undef INSTANCE_X64
 #undef INSTANCE
-}
+// clang-format on
+} // namespace
 
 const spd_create_f *cpu_engine_t::get_sum_implementation_list() const {
     return cpu_sum_impl_list;
 }
 
-}
-}
-}
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl

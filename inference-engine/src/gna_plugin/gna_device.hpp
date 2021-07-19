@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2020 Intel Corporation
+// Copyright (C) 2018-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <map>
+#include <set>
 #include <vector>
 #include <thread>
 
@@ -39,6 +40,10 @@ enum GnaWaitStatus : int {
  */
 class GNADeviceHelper {
     static std::mutex acrossPluginsSync;
+    static std::string decoratedGnaLibVersion() {
+        static std::string gnaLibraryVersion{ ", GNA library version: " + GNADeviceHelper::GetGnaLibraryVersion() };
+        return gnaLibraryVersion;
+    }
 #if GNA_LIB_VER == 1
     intel_gna_status_t nGNAStatus = GNA_NOERROR;
     intel_gna_handle_t nGNAHandle = 0;
@@ -46,8 +51,11 @@ class GNADeviceHelper {
     intel_gna_perf_t nGNAPerfResultsTotal;
 #else
     uint32_t nGnaDeviceIndex = 0;
-    Gna2DeviceVersion gna2HwConsistency = Gna2DeviceVersionSoftwareEmulation;
+    bool swExactMode = false;
     Gna2DeviceVersion detectedGnaDevVersion = Gna2DeviceVersionSoftwareEmulation;
+    std::string executionTarget;
+    std::string compileTarget;
+    bool isGnaLibVersion2_1 = false;
 
     static const uint32_t TotalGna2InstrumentationPoints = 2;
     Gna2InstrumentationPoint gna2InstrumentationPoints[TotalGna2InstrumentationPoints] = {
@@ -57,7 +65,7 @@ class GNADeviceHelper {
     uint64_t instrumentationResults[TotalGna2InstrumentationPoints] = {};
     uint64_t instrumentationTotal[TotalGna2InstrumentationPoints] = {};
     uint32_t instrumentationConfigId = 0;
-    std::vector<uint32_t> unwaitedRequestIds;
+    std::set<uint32_t> unwaitedRequestIds;
 #define MAX_TIMEOUT 500000
 #endif
     bool isPerformanceMeasuring = false;
@@ -69,16 +77,28 @@ public:
                             bool isPerformanceMeasuring = false) :
                                     isPerformanceMeasuring(isPerformanceMeasuring) {
 #else
-    explicit GNADeviceHelper(Gna2DeviceVersion gna2HwConsistency = Gna2DeviceVersionSoftwareEmulation,
+    explicit GNADeviceHelper(std::string executionTargetIn = "",
+         std::string compileTargetIn = "",
+         bool swExactModeIn = false,
          uint8_t lib_async_n_threads = 1,
          bool use_openmp = false,
          bool isPerformanceMeasuring = false) :
-         gna2HwConsistency(gna2HwConsistency),
+         swExactMode(swExactModeIn),
+         executionTarget(executionTargetIn),
+         compileTarget(compileTargetIn),
          isPerformanceMeasuring(isPerformanceMeasuring),
          nGnaDeviceIndex{selectGnaDevice()} {
 #endif
         open(lib_async_n_threads);
         initGnaPerfCounters();
+
+        // check GNA Library version
+        const auto gnaLibVersion = GetGnaLibraryVersion();
+#if GNA_LIB_VER == 2
+        if (gnaLibVersion.rfind("2.1", 0) == 0) {
+            isGnaLibVersion2_1 = true;
+        }
+#endif
 
         if (use_openmp) {
             uint8_t num_cores = std::thread::hardware_concurrency();
@@ -110,21 +130,21 @@ public:
     void setUpActiveList(unsigned req_config_id, uint32_t layerIndex, uint32_t* ptr_active_indices, uint32_t num_active_indices);
     void propagateSync(const uint32_t requestConfigId, Gna2AccelerationMode gna2AccelerationMode);
     uint32_t propagate(const uint32_t requestConfigId, Gna2AccelerationMode gna2AccelerationMode);
-#if GNA_LIB_VER == 2
     uint32_t createModel(Gna2Model& gnaModel) const;
-#else
-    uint32_t createModel(const intel_nnet_type_t& intel_nnet_type);
-#endif
     void releaseModel(const uint32_t model_id);
     uint32_t createRequestConfig(const uint32_t model_id);
     static uint32_t getNumberOfGnaDevices();
     static uint32_t selectGnaDevice();
+    static bool isGnaHw(const Gna2DeviceVersion dev) {
+        return Gna2DeviceVersionSoftwareEmulation != dev;
+    }
     bool hasGnaHw() const {
-        return Gna2DeviceVersionSoftwareEmulation != detectedGnaDevVersion;
+        return isGnaHw(detectedGnaDevVersion);
     }
-    bool isUpTo20GnaDevice() const {
-        return detectedGnaDevVersion <= Gna2DeviceVersion2_0;
+    static bool isUpTo20HwGnaDevice(const Gna2DeviceVersion dev) {
+        return dev <= Gna2DeviceVersion2_0 && isGnaHw(dev);
     }
+    bool enforceLegacyCnnNeeded() const;
     static void checkGna2Status(Gna2Status status, const std::string& from);
     static void checkGna2Status(Gna2Status status, const Gna2Model& gnaModel);
 #endif
@@ -161,10 +181,12 @@ public:
     void updateGnaPerfCounters();
     void getGnaPerfCounters(std::map<std::string,
                         InferenceEngine::InferenceEngineProfileInfo>& retPerfCounters);
+    static std::string GetGnaLibraryVersion();
  private:
     void open(uint8_t const n_threads);
 
     void close();
+    static std::string getGnaLibraryVersionPrivate();
 #if GNA_LIB_VER == 1
     void checkStatus() const;
 #else
@@ -174,6 +196,9 @@ public:
     static const std::map <const std::pair<Gna2OperationType, int32_t>, const std::string > operandTypes;
 
     static void enforceLegacyCnns(Gna2Model& gnaModel);
+    Gna2DeviceVersion parseDeclaredTarget(std::string target, const bool execTarget) const;
+    Gna2DeviceVersion getDefaultTarget() const;
+    Gna2DeviceVersion getTargetDevice(bool execTarget) const;
 #endif
     void setOMPThreads(uint8_t const n_threads);
 

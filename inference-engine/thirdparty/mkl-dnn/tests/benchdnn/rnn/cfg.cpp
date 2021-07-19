@@ -1,128 +1,179 @@
 /*******************************************************************************
- * Copyright 2018 Intel Corporation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *******************************************************************************/
+* Copyright 2018-2020 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
 
-#include "mkldnn_common.hpp"
+#include <set>
+
+#include "dnnl_common.hpp"
 #include "rnn/rnn.hpp"
 
 namespace rnn {
 
-/* cfgs definition
-arrays:
-input,
-states,
-weights_input,
-weights_states,
-bias,
-dst_last_iteration,
-dst_last_layer,
-dst_diff_input,
-dst_diff_states,
-dst_diff_weights_input,
-dst_diff_weights_states,
-dst_diff_bias,
-diff_last_iteration,
-diff_last_layer,
-params: {data_type, min, max, f_min, f_max, f_mean, f_var, eps}
-*/
+namespace {
 
-const int int_max_exact = 1 << 24;
-const _dt_conf_t conf_f32 = {
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //input
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //weights_input
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //weights_states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //bias
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_last_iteration
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_last_layer
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_diff_input
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_diff_states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_diff_weights_input
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_diff_weights_states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_diff_bias
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //diff_last_iteration
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //diff_last_layer
-};
-const _dt_conf_t conf_u8u8u8u8 = {
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 5.f, 0. }, //input
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 5.f, 0. }, //states
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_input
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.01f, 0. }, //bias
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 10.f, 0. }, //dst_iter
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 10.f, 0. }, //dst_layer
-};
-const _dt_conf_t conf_u8u8u8f32 = {
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 5.f, 0. }, //input
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 5.f, 0. }, //states
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_input
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.01f, 0. }, //bias
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 10.f, 0. }, //dst_iter
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.001f, 1e-5 }, //dst_last_layer
-};
-const _dt_conf_t conf_f32u8f32u8 = {
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 5.f, 0. }, //input
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.05f, 1e-5 }, //states
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_input
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.01f, 0. }, //bias
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.01f, 1e-5 }, //dst_iter
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 10.f, 0. }, //dst_layer
-};
-const _dt_conf_t conf_f32u8f32f32 = {
-    { mkldnn_u8, 0, UINT8_MAX, 0, 127, 64.f, 5.f, 0. }, //input
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.05f, 1e-5 }, //states
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_input
-    { mkldnn_s8, INT8_MIN, INT8_MAX, -63, 63, 0.f, 10.f, 0. }, //weights_states
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.01f, 0. }, //bias
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.01f, 1e-5 }, //dst_iter
-    { mkldnn_f32, -int_max_exact, int_max_exact, -1, 1, 0.f, 0.01f, 1e-5 }, //dst_last_layer
-};
+#define CASE(KIND, ENTRY) \
+    if (kind == (KIND)) return ENTRY
+#define DEFAULT(ENTRY) return ENTRY
+#define END_LIST \
+    SAFE_V(CRIT); \
+    return F32_ENTRY
 
-const dt_conf_t *str2cfg(const char *str) {
-#define CASE(cfg)                         \
-    if (!strcasecmp(STRINGIFY(cfg), str)) \
-    return CONCAT2(conf_, cfg)
-    CASE(f32);
-    CASE(u8u8u8u8);
-    CASE(u8u8u8f32);
-    CASE(f32u8f32u8);
-    CASE(f32u8f32f32);
-#undef CASE
-    []() {
-        SAFE(FAIL, CRIT);
-        return 0;
-    }();
-    return (const dt_conf_t *)1;
+std::set<const dt_conf_t *> cfg_list;
+#define CFG(name) \
+    struct conf_##name##_t : dt_conf_t { \
+        using dt_conf_t::dt_conf_t; \
+        const entry_t &operator[](data_kind_t kind) const override; \
+    } conf_##name(STRINGIFY(name)); \
+    static auto __reg_##name = cfg_list.insert(&conf_##name); \
+    const dt_conf_t::entry_t &conf_##name##_t::operator[](data_kind_t kind) \
+            const
+
+// f32
+#define MIN_F32 0.0f
+#define MAX_F32 .999999f
+#define MEAN_F32 .5f
+#define STDDEV_F32 0.01f
+#define EPS_F32 epsilon_dt(dnnl_f32)
+const int f32_max_exact = 1 << 24;
+dt_conf_t::entry_t F32_ENTRY {dnnl_f32, -f32_max_exact, f32_max_exact, MIN_F32,
+        MAX_F32, MEAN_F32, STDDEV_F32, EPS_F32};
+
+CFG(f32) {
+    return F32_ENTRY;
 }
 
-const char *cfg2str(const dt_conf_t *cfg) {
-#define CASE(_cfg)                   \
-    if (cfg == CONCAT2(conf_, _cfg)) \
-    return STRINGIFY(_cfg)
-    CASE(f32);
-    CASE(u8u8u8u8);
-    CASE(u8u8u8f32);
-    CASE(f32u8f32u8);
-    CASE(f32u8f32f32);
-#undef CASE
-    []() {
-        SAFE(FAIL, CRIT);
-        return 0;
-    }();
-    return NULL;
+// bf16
+#define MIN_BF16 0.0f
+#define MAX_BF16 .999999f
+#define MEAN_BF16 .5f
+#define STDDEV_BF16 0.01f
+#define EPS_BF16 epsilon_dt(dnnl_bf16)
+dt_conf_t::entry_t BF16_ENTRY_BF16 {dnnl_bf16, -f32_max_exact, f32_max_exact,
+        MIN_BF16, MAX_BF16, MEAN_BF16, STDDEV_BF16, EPS_BF16};
+dt_conf_t::entry_t BF16_ENTRY_F32 {dnnl_f32, -f32_max_exact, f32_max_exact,
+        MIN_F32, MAX_F32, MEAN_F32, STDDEV_F32, EPS_BF16};
+
+CFG(bf16) {
+    CASE(SRC_LAYER, BF16_ENTRY_BF16);
+    CASE(SRC_ITER, BF16_ENTRY_BF16);
+    CASE(WEIGHTS_LAYER, BF16_ENTRY_BF16);
+    CASE(WEIGHTS_ITER, BF16_ENTRY_BF16);
+    CASE(DST_ITER, BF16_ENTRY_BF16);
+    CASE(DST_LAYER, BF16_ENTRY_BF16);
+    DEFAULT(BF16_ENTRY_F32);
 }
+
+// f16
+const int f16_max_exact = 1 << 11;
+dt_conf_t::entry_t F16_ENTRY {dnnl_f16, -f16_max_exact, f16_max_exact, 0.0f,
+        0.999999f, 0.5f, 0.01f, epsilon_dt(dnnl_f16)};
+
+CFG(f16) {
+    return F16_ENTRY;
+}
+
+// s8
+#define EPS_U8 4e-3
+#define EPS_S8 8e-3
+
+#define MIN_U8 0.0f
+#define MAX_U8 127.f
+#define MEAN_U8 28.f
+#define STDDEV_U8 16.f
+
+#define MIN_S8 (-63.f)
+#define MAX_S8 63.f
+#define MEAN_S8 0.f
+#define STDDEV_S8 32.f
+
+dt_conf_t::entry_t U8_ENTRY_U8_EXACT {
+        dnnl_u8, 0, UINT8_MAX, MIN_U8, MAX_U8, MEAN_U8, STDDEV_U8, 0.f};
+dt_conf_t::entry_t U8_ENTRY_U8 {
+        dnnl_u8, 0, UINT8_MAX, MIN_U8, MAX_U8, MEAN_U8, STDDEV_U8, EPS_U8};
+dt_conf_t::entry_t U8_ENTRY_S8 {dnnl_s8, INT8_MIN, INT8_MAX, MIN_S8, MAX_S8,
+        MEAN_S8, STDDEV_S8, EPS_S8};
+dt_conf_t::entry_t U8_ENTRY_F32 {dnnl_f32, -f32_max_exact, f32_max_exact,
+        MIN_F32, MAX_F32, MEAN_F32, STDDEV_F32, EPS_F32};
+
+CFG(u8u8u8u8) {
+    CASE(SRC_LAYER, U8_ENTRY_U8);
+    CASE(SRC_ITER, U8_ENTRY_U8);
+    CASE(SRC_ITER_C, U8_ENTRY_F32);
+    CASE(WEIGHTS_LAYER, U8_ENTRY_S8);
+    CASE(WEIGHTS_ITER, U8_ENTRY_S8);
+    CASE(WEIGHTS_PEEPHOLE, U8_ENTRY_F32);
+    CASE(WEIGHTS_PROJECTION, U8_ENTRY_S8);
+    CASE(BIAS, U8_ENTRY_F32);
+    CASE(DST_ITER, U8_ENTRY_U8);
+    CASE(DST_ITER_C, U8_ENTRY_F32);
+    CASE(DST_LAYER, U8_ENTRY_U8_EXACT);
+    END_LIST;
+}
+
+CFG(u8u8u8f32) {
+    CASE(SRC_LAYER, U8_ENTRY_U8);
+    CASE(SRC_ITER, U8_ENTRY_U8);
+    CASE(SRC_ITER_C, U8_ENTRY_F32);
+    CASE(WEIGHTS_LAYER, U8_ENTRY_S8);
+    CASE(WEIGHTS_ITER, U8_ENTRY_S8);
+    CASE(WEIGHTS_PEEPHOLE, U8_ENTRY_F32);
+    CASE(WEIGHTS_PROJECTION, U8_ENTRY_S8);
+    CASE(BIAS, U8_ENTRY_F32);
+    CASE(DST_ITER, U8_ENTRY_U8);
+    CASE(DST_ITER_C, U8_ENTRY_F32);
+    CASE(DST_LAYER, U8_ENTRY_F32);
+    END_LIST;
+}
+
+CFG(f32u8f32u8) {
+    CASE(SRC_LAYER, U8_ENTRY_U8);
+    CASE(SRC_ITER, U8_ENTRY_F32);
+    CASE(SRC_ITER_C, U8_ENTRY_F32);
+    CASE(WEIGHTS_LAYER, U8_ENTRY_S8);
+    CASE(WEIGHTS_ITER, U8_ENTRY_S8);
+    CASE(WEIGHTS_PEEPHOLE, U8_ENTRY_F32);
+    CASE(WEIGHTS_PROJECTION, U8_ENTRY_S8);
+    CASE(BIAS, U8_ENTRY_F32);
+    CASE(DST_ITER, U8_ENTRY_F32);
+    CASE(DST_ITER_C, U8_ENTRY_F32);
+    CASE(DST_LAYER, U8_ENTRY_U8_EXACT);
+    END_LIST;
+}
+
+CFG(f32u8f32f32) {
+    CASE(SRC_LAYER, U8_ENTRY_U8);
+    CASE(SRC_ITER, U8_ENTRY_F32);
+    CASE(SRC_ITER_C, U8_ENTRY_F32);
+    CASE(WEIGHTS_LAYER, U8_ENTRY_S8);
+    CASE(WEIGHTS_ITER, U8_ENTRY_S8);
+    CASE(WEIGHTS_PEEPHOLE, U8_ENTRY_F32);
+    CASE(WEIGHTS_PROJECTION, U8_ENTRY_S8);
+    CASE(BIAS, U8_ENTRY_F32);
+    CASE(DST_ITER, U8_ENTRY_F32);
+    CASE(DST_ITER_C, U8_ENTRY_F32);
+    CASE(DST_LAYER, U8_ENTRY_F32);
+    END_LIST;
+}
+
+} // namespace
+
+const dt_conf_t &dt_conf_t::create(const std::string &str) {
+    for (const auto cfg : cfg_list)
+        if (cfg->str() == str) return *cfg;
+    SAFE_V(CRIT);
+    return conf_f32;
+}
+
 } // namespace rnn

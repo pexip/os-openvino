@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018 Intel Corporation
+* Copyright 2018-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,108 +14,98 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <float.h>
-#include <math.h>
 
-#include "mkldnn.h"
+#include <sstream>
 
-#include "mkldnn_common.hpp"
-#include "mkldnn_memory.hpp"
+#include "dnnl_common.hpp"
+#include "dnnl_memory.hpp"
+#include "parser.hpp"
 
 #include "conv/deconv.hpp"
+
 using namespace conv;
 
 namespace deconv {
 
-/* global driver parameters */
-const dt_conf_t *cfg = conf_f32;
-const char *pattern = NULL;
-dir_t dir = FWD_B;
-int mb = 0;
-alg_t alg = DIRECT;
-attr_t attr;
-const char *skip_impl = "";
-bool allow_unimpl = false;
-const char *perf_template = "perf,%n,%d,%GO,%GF,%-t,%-Gp,%0t,%0Gp";
+void check_correctness(const settings_t &s) {
+    for_(const auto &i_dir : s.dir)
+    for_(const auto &i_cfg : s.cfg)
+    for_(const auto &i_stag : s.stag)
+    for_(const auto &i_wtag : s.wtag)
+    for_(const auto &i_dtag : s.dtag)
+    for_(const auto &i_alg : s.alg)
+    for_(const auto &i_oscale : s.oscale)
+    for_(const auto &i_post_ops : s.post_ops)
+    for_(const auto &i_scratchpad_mode : s.scratchpad_mode)
+    for (const auto &i_mb : s.mb) {
+        attr_t attr;
+        attr.insert(i_oscale);
+        attr.insert(i_post_ops);
+        attr.insert(i_scratchpad_mode);
+        handle_legacy_attr(attr, s.attr);
 
-void reset_parameters() {
-    cfg = conf_f32;
-    pattern = NULL;
-    dir = FWD_B;
-    mb = 0;
-    alg = DIRECT;
-    attr = attr_t();
-    skip_impl = "";
-    allow_unimpl = false;
+        const prb_t prb(s.desc, i_dir, i_cfg, i_stag, i_wtag, i_dtag, i_alg,
+                attr, i_mb);
+        std::stringstream ss;
+        ss << prb;
+        const std::string cpp_pstr = ss.str();
+        const char *pstr = cpp_pstr.c_str();
+
+        if (s.pattern && !match_regex(pstr, s.pattern)) return;
+        BENCHDNN_PRINT(1, "run: %s\n", pstr);
+
+        res_t res {};
+        const int status = deconv::doit(&prb, &res);
+
+        bool want_perf_report = false;
+        parse_result(res, want_perf_report, status, pstr);
+
+        if (want_perf_report && bench_mode & PERF) {
+            perf_report_t pr(s.perf_template);
+            pr.report(&prb, &res, pstr);
+        }
+
+        benchdnn_stat.tests++;
+    }
 }
 
-void check_correctness(const desc_t *c) {
-    const prb_t p(*c, dir, cfg, alg, attr, mb, true);
-    char pstr[max_prb_len];
-    prb2str(&p, pstr);
+int bench(int argc, char **argv) {
+    driver_name = "deconv";
+    using namespace parser;
+    static settings_t s;
+    static const settings_t def {};
+    for (; argc > 0; --argc, ++argv) {
+        const bool parsed_options = parse_bench_settings(argv[0])
+                || parse_batch(bench, argv[0])
+                || parse_dir(s.dir, def.dir, argv[0])
+                || parse_cfg(s.cfg, def.cfg, str2cfg, argv[0])
+                || parse_tag(s.stag, def.stag, argv[0], "stag")
+                || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
+                || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
+                || parse_alg(s.alg, def.alg, str2alg, argv[0])
+                || parse_mb(s.mb, def.mb, argv[0])
+                || parse_attr(s.attr, argv[0])
+                || parse_attr_oscale(s.oscale, argv[0])
+                || parse_attr_post_ops(s.post_ops, argv[0])
+                || parse_attr_scratchpad_mode(
+                        s.scratchpad_mode, def.scratchpad_mode, argv[0])
+                || parse_test_pattern_match(s.pattern, argv[0])
+                || parse_perf_template(s.perf_template, s.perf_template_def,
+                        s.perf_template_csv, argv[0])
+                || parse_reset(s, argv[0]);
+        if (!parsed_options) {
+            catch_unknown_options(argv[0]);
 
-    if (pattern && !match_regex(pstr, pattern))
-        return;
-    print(1, "run: %s\n", pstr);
-
-    res_t res{};
-    const int status = doit(&p, &res);
-    (void)status;
-
-    bool want_perf_report = false;
-
-    parse_result(res, want_perf_report, allow_unimpl, status, pstr);
-
-    if (want_perf_report && bench_mode & PERF)
-        perf_report(&p, &res, pstr);
-
-    benchdnn_stat.tests++;
-}
-
-int bench(int argc, char **argv, bool main_bench) {
-    for (int arg = 0; arg < argc; ++arg) {
-        if (!strncmp("--batch=", argv[arg], 8))
-            SAFE(batch(argv[arg] + 8, bench), CRIT);
-        else if (!strncmp("--cfg=", argv[arg], 6))
-            cfg = str2cfg(argv[arg] + 6);
-        else if (!strncmp("--match=", argv[arg], 8))
-            pattern = argv[arg] + 8;
-        else if (!strncmp("--mb=", argv[arg], 5))
-            mb = atoi(argv[arg] + 5);
-        else if (!strncmp("--dir=", argv[arg], 6))
-            dir = str2dir(argv[arg] + 6);
-        else if (!strncmp("--alg=", argv[arg], 6))
-            alg = str2alg(argv[arg] + 6);
-        else if (!strncmp("--attr=", argv[arg], 7))
-            SAFE(str2attr(&attr, argv[arg] + 7), CRIT);
-        else if (!strncmp("--skip-impl=", argv[arg], 12))
-            skip_impl = argv[arg] + 12;
-        else if (!strncmp("--allow-unimpl=", argv[arg], 15))
-            allow_unimpl = str2bool(argv[arg] + 15);
-        else if (!strncmp("--perf-template=", argv[arg], 16))
-            perf_template = argv[arg] + 16;
-        else if (!strcmp("--reset", argv[arg]))
-            reset_parameters();
-        else if (!strncmp("--mode=", argv[arg], 7))
-            bench_mode = str2bench_mode(argv[arg] + 7);
-        else if (!strncmp("-v", argv[arg], 2))
-            verbose = atoi(argv[arg] + 2);
-        else if (!strncmp("--verbose=", argv[arg], 10))
-            verbose = atoi(argv[arg] + 10);
-        else {
-            desc_t c;
-            bool is_deconv = 1;
-            if (str2desc(&c, argv[arg], is_deconv) == FAIL) {
-                fprintf(stderr, "driver: unknown option: `%s`, exiting...\n",
-                        argv[arg]);
-                exit(2);
-            }
-            check_correctness(&c);
+            bool is_deconv = true;
+            SAFE_V(str2desc(&s.desc, argv[0], is_deconv));
+            check_correctness(s);
         }
     }
-    return OK;
+
+    return parse_last_argument();
 }
-}
+
+} // namespace deconv

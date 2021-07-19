@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2018 Intel Corporation
+* Copyright 2016-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -15,65 +15,72 @@
 *******************************************************************************/
 
 #include <assert.h>
-#include "mkldnn.h"
+#include "dnnl.h"
 
 #include "c_types_map.hpp"
 #include "engine.hpp"
-#include "memory_pd.hpp"
-#include "primitive_desc.hpp"
-#include "reorder_pd.hpp"
 #include "type_helpers.hpp"
 #include "utils.hpp"
 
-using namespace mkldnn::impl;
-using namespace mkldnn::impl::utils;
-using namespace mkldnn::impl::status;
+#include "reorder_pd.hpp"
 
-status_t mkldnn_reorder_primitive_desc_create_v2(
-        primitive_desc_t **reorder_primitive_desc,
-        const primitive_desc_t *input, const primitive_desc_t *output,
+using namespace dnnl::impl;
+using namespace dnnl::impl::utils;
+using namespace dnnl::impl::status;
+
+static engine_t *get_reorder_engine(
+        engine_t *src_engine, engine_t *dst_engine) {
+    auto s_ek = src_engine->kind();
+    auto d_ek = dst_engine->kind();
+    auto s_rk = src_engine->runtime_kind();
+    auto d_rk = dst_engine->runtime_kind();
+
+    if (is_native_runtime(d_rk)) return src_engine;
+
+    if (is_native_runtime(s_rk)) return dst_engine;
+
+    if (d_ek == engine_kind::cpu) return src_engine;
+
+    if (s_ek == engine_kind::cpu) return dst_engine;
+
+    assert(s_ek == engine_kind::gpu);
+    assert(d_ek == engine_kind::gpu);
+    return src_engine;
+}
+
+status_t dnnl_reorder_primitive_desc_create(
+        primitive_desc_iface_t **reorder_pd_iface, const memory_desc_t *src_md,
+        engine_t *src_engine, const memory_desc_t *dst_md, engine_t *dst_engine,
         const primitive_attr_t *attr) {
-    bool args_ok = true
-        && !any_null(reorder_primitive_desc, input, output)
-        && everyone_is(primitive_kind::memory, input->kind(), output->kind());
-    if (!args_ok) return invalid_arguments;
-
-    auto i_ek = input->engine()->kind();
-    auto o_ek = output->engine()->kind();
-    if (!IMPLICATION(i_ek != o_ek, one_of(engine_kind::cpu, i_ek, o_ek)))
+    if (any_null(reorder_pd_iface, src_engine, src_md, dst_engine, dst_md))
         return invalid_arguments;
 
-    auto r_pd = reinterpret_cast<reorder_pd_t **>(
-            reorder_primitive_desc);
-    auto i_mpd = reinterpret_cast<const memory_pd_t*>(input);
-    auto o_mpd = reinterpret_cast<const memory_pd_t*>(output);
-
-    auto i_mdw = memory_desc_wrapper(i_mpd);
-    auto o_mdw = memory_desc_wrapper(o_mpd);
-
-    if (!i_mdw.consistent_with(o_mdw))
+    auto s_ek = src_engine->kind();
+    auto d_ek = dst_engine->kind();
+    if (!IMPLICATION(s_ek != d_ek, one_of(engine_kind::cpu, s_ek, d_ek)))
         return invalid_arguments;
 
-    auto e = (i_ek != engine_kind::cpu) ? input->engine() : output->engine();
+    auto s_mdw = memory_desc_wrapper(*src_md);
+    auto d_mdw = memory_desc_wrapper(*dst_md);
 
-    const primitive_attr_t dummy_attr;
-    if (attr == NULL)
-        attr = &dummy_attr;
+    if (!s_mdw.consistent_with(d_mdw))
+        return invalid_arguments;
 
-    for (auto r = e->get_reorder_implementation_list(); *r; ++r) {
-        if ((*r)(r_pd, i_mpd, o_mpd, attr) == success) {
-            (*r_pd)->init_info();
-            return success;
+    if (attr == nullptr) attr = &default_attr();
+
+    auto e = get_reorder_engine(src_engine, dst_engine);
+    for (auto r = e->get_reorder_implementation_list(src_md, dst_md); *r; ++r) {
+        reorder_pd_t *reorder_pd = nullptr;
+        if ((*r)(&reorder_pd, e, attr, src_engine, src_md, dst_engine, dst_md)
+                == success) {
+            auto status = safe_ptr_assign(*reorder_pd_iface,
+                    new reorder_primitive_desc_iface_t(
+                            reorder_pd, e, src_engine, dst_engine));
+            if (status != status::success) delete reorder_pd;
+            return status;
         }
     }
     return unimplemented;
 }
 
-status_t mkldnn_reorder_primitive_desc_create(
-        primitive_desc_t **reorder_primitive_desc,
-        const primitive_desc_t *input, const primitive_desc_t *output) {
-    return mkldnn_reorder_primitive_desc_create_v2(reorder_primitive_desc,
-            input, output, nullptr);
-}
-
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s
+// vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s

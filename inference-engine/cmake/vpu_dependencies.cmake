@@ -1,32 +1,29 @@
-# Copyright (C) 2018-2020 Intel Corporation
+# Copyright (C) 2018-2021 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
-if(CMAKE_VERSION VERSION_GREATER 3.9.6)
-    include_guard(GLOBAL)
-else()
-    if(__CURRENT_FILE_VAR__)
-      return()
-    endif()
-    set(__CURRENT_FILE_VAR__ TRUE)
-endif()
-
-include(dependency_solver)
+include_guard(GLOBAL)
 
 set(VPU_SUPPORTED_FIRMWARES usb-ma2x8x pcie-ma2x8x)
+set(VPU_SUPPORTED_FIRMWARES_HASH
+    "420b300d193f7fcfe7e3f9bbec6c247d65b784a500b5cd2effb7cb1ec6e1b209"
+    "bfe3caf270b168b9de18ef88f04bde3907d7d12a679f1fa7cc580423c35db637")
 
 #
 # Default packages
 #
 
-set(FIRMWARE_PACKAGE_VERSION 1522)
+set(FIRMWARE_PACKAGE_VERSION 1688)
 set(VPU_CLC_MA2X8X_VERSION "movi-cltools-20.09.2")
 
 #
 # CMake variables to override default firmware files
 #
-
-foreach(firmware_name IN LISTS VPU_SUPPORTED_FIRMWARES)
+list(LENGTH VPU_SUPPORTED_FIRMWARES num_firmwares)
+math(EXPR num_firmwares "${num_firmwares} - 1")
+foreach(idx RANGE 0 ${num_firmwares})
+    list(GET VPU_SUPPORTED_FIRMWARES ${idx} firmware_name)
+    list(GET VPU_SUPPORTED_FIRMWARES_HASH ${idx} hash)
     string(TOUPPER "${firmware_name}" firmware_name_upper)
 
     set(firmware_name_full ${firmware_name}.mvcmd)
@@ -41,7 +38,8 @@ foreach(firmware_name IN LISTS VPU_SUPPORTED_FIRMWARES)
         ARCHIVE_UNIFIED VPU/${firmware_name}/firmware_${firmware_name}_${FIRMWARE_PACKAGE_VERSION}.zip
         TARGET_PATH "${TEMP}/vpu/firmware/${firmware_name}"
         ENVIRONMENT "VPU_FIRMWARE_${firmware_name_upper}_FILE"
-        FOLDER)
+        FOLDER
+        SHA256 ${hash})
     debug_message(STATUS "${firmware_name}=" ${VPU_FIRMWARE_${firmware_name_upper}})
 
     update_deps_cache(
@@ -98,7 +96,8 @@ add_custom_target(vpu_copy_firmware
 if(ANDROID)
     RESOLVE_DEPENDENCY(LIBUSB
         ARCHIVE_ANDROID "libusb_39409_android.tgz"
-        TARGET_PATH "${TEMP}/vpu/libusb")
+        TARGET_PATH "${TEMP}/vpu/libusb"
+        SHA256 "f9e73e95bc769abf1e9910a59b138cf387205e1b4c4e5faec236136fb1d325f7")
     debug_message(STATUS "LIBUSB=" ${LIBUSB})
 
     set(LIBUSB_INCLUDE_DIR "${LIBUSB}/include")
@@ -129,7 +128,8 @@ if(LINUX AND LINUX_OS_NAME MATCHES "Ubuntu")
         RESOLVE_DEPENDENCY(VPU_CLC_MA2X8X
             ARCHIVE_LIN "VPU_OCL_compiler/${VPU_CLC_MA2X8X_VERSION}.tar.gz"
             TARGET_PATH "${TEMP}/vpu/clc/ma2x8x/${VPU_CLC_MA2X8X_VERSION}"
-            ENVIRONMENT "VPU_CLC_MA2X8X_COMMAND")
+            ENVIRONMENT "VPU_CLC_MA2X8X_COMMAND"
+            SHA256 "0a864bd0e11cee2d85ac7e451dddae19216c8bc9bb50e1a8e0151ab97d5e3c8d")
         debug_message(STATUS "VPU_CLC_MA2X8X=" ${VPU_CLC_MA2X8X})
 
         update_deps_cache(

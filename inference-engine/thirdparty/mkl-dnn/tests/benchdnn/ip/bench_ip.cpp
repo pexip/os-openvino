@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2018 Intel Corporation
+* Copyright 2017-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,87 +14,89 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <stdlib.h>
 #include <stdio.h>
-#include <float.h>
-#include <math.h>
+#include <stdlib.h>
 
-#include "mkldnn.h"
+#include <sstream>
 
-#include "mkldnn_common.hpp"
-#include "mkldnn_memory.hpp"
+#include "dnnl_common.hpp"
+#include "dnnl_memory.hpp"
+#include "parser.hpp"
 
 #include "ip/ip.hpp"
 
 namespace ip {
-const dt_conf_t *cfg = conf_f32;
-dir_t dir = FWD_B;
-int mb = 0;
-attr_t attr;
-bool allow_unimpl = false;
-const char *perf_template = "perf,%D,%n,%z,%q,%-t,%-Gp,%0t,%0Gp";
 
-void reset_parameters() {
-    cfg = conf_f32;
-    dir = FWD_B;
-    mb = 0;
-    attr = attr_t();
-    allow_unimpl = false;
+void check_correctness(const settings_t &s) {
+    for_(const auto &i_dir : s.dir)
+    for_(const auto &i_cfg : s.cfg)
+    for_(const auto &i_stag : s.stag)
+    for_(const auto &i_wtag : s.wtag)
+    for_(const auto &i_dtag : s.dtag)
+    for_(const auto &i_oscale : s.oscale)
+    for_(const auto &i_post_ops : s.post_ops)
+    for_(const auto &i_scratchpad_mode : s.scratchpad_mode)
+    for (const auto &i_mb : s.mb) {
+        attr_t attr;
+        attr.insert(i_oscale);
+        attr.insert(i_post_ops);
+        attr.insert(i_scratchpad_mode);
+        handle_legacy_attr(attr, s.attr);
+
+        const prb_t prb(
+                s.desc, i_mb, i_dir, i_cfg, i_stag, i_wtag, i_dtag, attr);
+        std::stringstream ss;
+        ss << prb;
+        const std::string cpp_pstr = ss.str();
+        const char *pstr = cpp_pstr.c_str();
+        BENCHDNN_PRINT(1, "run: %s\n", pstr);
+
+        res_t res {};
+        const int status = doit(&prb, &res);
+
+        bool want_perf_report = false;
+        parse_result(res, want_perf_report, status, pstr);
+
+        if (want_perf_report && bench_mode & PERF) {
+            perf_report_t pr(s.perf_template);
+            pr.report(&prb, &res, pstr);
+        }
+
+        benchdnn_stat.tests++;
+    }
 }
 
-void check_correctness(const desc_t *c) {
-    const prb_t p(*c, mb, dir, cfg, attr);
-    char pstr[max_prb_len];
-    prb2str(&p, pstr);
+int bench(int argc, char **argv) {
+    driver_name = "ip";
+    using namespace parser;
+    static settings_t s;
+    static const settings_t def {};
+    for (; argc > 0; --argc, ++argv) {
+        const bool parsed_options = parse_bench_settings(argv[0])
+                || parse_batch(bench, argv[0])
+                || parse_dir(s.dir, def.dir, argv[0])
+                || parse_cfg(s.cfg, def.cfg, str2cfg, argv[0])
+                || parse_tag(s.stag, def.stag, argv[0], "stag")
+                || parse_tag(s.wtag, def.wtag, argv[0], "wtag")
+                || parse_tag(s.dtag, def.dtag, argv[0], "dtag")
+                || parse_mb(s.mb, def.mb, argv[0])
+                || parse_attr(s.attr, argv[0])
+                || parse_attr_oscale(s.oscale, argv[0])
+                || parse_attr_post_ops(s.post_ops, argv[0])
+                || parse_attr_scratchpad_mode(
+                        s.scratchpad_mode, def.scratchpad_mode, argv[0])
+                || parse_perf_template(s.perf_template, s.perf_template_def,
+                        s.perf_template_csv, argv[0])
+                || parse_reset(s, argv[0]);
+        if (!parsed_options) {
+            catch_unknown_options(argv[0]);
 
-    res_t res{};
-    const int status = ip::doit(&p, &res);
-
-    bool want_perf_report = false;
-
-    parse_result(res, want_perf_report, allow_unimpl, status, pstr);
-
-    if (want_perf_report && bench_mode & PERF)
-        perf_report(&p, &res, pstr);
-
-    benchdnn_stat.tests++;
-}
-
-int bench(int argc, char **argv, bool main_bench) {
-    for (int arg = 0; arg < argc; ++arg) {
-        if (!strncmp("--batch=", argv[arg], 8))
-            SAFE(batch(argv[arg] + 8, bench), CRIT);
-        else if (!strncmp("--cfg=", argv[arg], 6))
-            cfg = str2cfg(argv[arg] + 6);
-        else if (!strncmp("--mb=", argv[arg], 5))
-            mb = atoi(argv[arg] + 5);
-        else if (!strncmp("--dir=", argv[arg], 6))
-            dir = str2dir(argv[arg] + 6);
-        else if (!strncmp("--attr=", argv[arg], 7))
-            SAFE(str2attr(&attr, argv[arg] + 7), CRIT);
-        else if (!strncmp("--allow-unimpl=", argv[arg], 15))
-            allow_unimpl = str2bool(argv[arg] + 15);
-        else if (!strncmp("--perf-template=", argv[arg], 16))
-            perf_template = argv[arg] + 16;
-        else if (!strcmp("--reset", argv[arg]))
-            reset_parameters();
-        else if (!strncmp("--mode=", argv[arg], 7))
-            bench_mode = str2bench_mode(argv[arg] + 7);
-        else if (!strncmp("-v", argv[arg], 2))
-            verbose = atoi(argv[arg] + 2);
-        else if (!strncmp("--verbose=", argv[arg], 10))
-            verbose = atoi(argv[arg] + 10);
-        else {
-            desc_t c;
-            if (str2desc(&c, argv[arg]) == FAIL) {
-                fprintf(stderr, "driver: unknown option: `%s`, exiting...\n",
-                        argv[arg]);
-                exit(2);
-            }
-            check_correctness(&c);
+            SAFE_V(str2desc(&s.desc, argv[0]));
+            check_correctness(s);
         }
     }
 
-    return OK;
+    return parse_last_argument();
 }
-}
+
+} // namespace ip

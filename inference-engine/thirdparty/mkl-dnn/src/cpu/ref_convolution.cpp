@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2018 Intel Corporation
+* Copyright 2016-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,399 +14,349 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <common/primitive_attr.hpp>
-#include <common/math_utils.hpp>
-#include "c_types_map.hpp"
-#include "type_helpers.hpp"
-#include "mkldnn_thread.hpp"
-#include "mkldnn_traits.hpp"
-#include "math_utils.hpp"
+#include "common/c_types_map.hpp"
+#include "common/dnnl_thread.hpp"
+#include "common/dnnl_traits.hpp"
+#include "common/math_utils.hpp"
+#include "common/type_helpers.hpp"
 
-#include "ref_convolution.hpp"
+#include "cpu/cpu_primitive.hpp"
+#include "cpu/simple_q10n.hpp"
 
-namespace mkldnn {
+#include "cpu/ref_convolution.hpp"
+
+namespace dnnl {
 namespace impl {
 namespace cpu {
 
-using math::saturate;
 using math::get_bias;
-using math::get_sum;
 
-template <data_type_t src_type, data_type_t wei_type,
-         data_type_t dst_type, data_type_t acc_type>
-void ref_convolution_fwd_t<src_type, wei_type, dst_type, acc_type>
-        ::execute_forward() const {
-    auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
-    auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
-    auto bias = reinterpret_cast<const char *>(this->input_memory(2));
-    auto dst = reinterpret_cast<dst_data_t *>(this->memory());
+namespace {
+inline dim_t get_data_off(const memory_desc_wrapper &mdw, int ndims, dim_t mb,
+        dim_t c, dim_t id, dim_t ih, dim_t iw) {
+    switch (ndims) {
+        case 5: return mdw.off(mb, c, id, ih, iw);
+        case 4: return mdw.off(mb, c, ih, iw);
+        case 3: return mdw.off(mb, c, iw);
+        default: assert(!"unsupported ndims"); return dim_t(0);
+    }
+}
 
-    const uint8_t* input_zero_points = pd()->attr()->input_zero_points_.shifts_;
-    size_t input_zero_points_count = pd()->attr()->input_zero_points_.count_;
+inline dim_t get_weights_off(const memory_desc_wrapper &mdw, bool with_groups,
+        int ndims, dim_t g, dim_t oc, dim_t ic, dim_t kd, dim_t kh, dim_t kw) {
+    switch (ndims) {
+        case 5:
+            return with_groups ? mdw.off(g, oc, ic, kd, kh, kw)
+                               : mdw.off(oc, ic, kd, kh, kw);
+        case 4:
+            return with_groups ? mdw.off(g, oc, ic, kh, kw)
+                               : mdw.off(oc, ic, kh, kw);
+        case 3:
+            return with_groups ? mdw.off(g, oc, ic, kw) : mdw.off(oc, ic, kw);
+        default: assert(!"unsupported ndims"); return dim_t(0);
+    }
+}
+} // namespace
 
-    const float* weights_zero_points = pd()->attr()->weights_zero_points_.shifts_;
-    size_t weights_zero_points_count = pd()->attr()->weights_zero_points_.count_;
+template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type,
+        data_type_t acc_type>
+status_t
+ref_convolution_fwd_t<src_type, wei_type, dst_type, acc_type>::execute_forward(
+        const exec_ctx_t &ctx) const {
+    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
+    auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
+    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
 
-    const memory_desc_wrapper src_d(pd()->src_pd());
-    const memory_desc_wrapper dst_d(pd()->dst_pd());
-    const memory_desc_wrapper weights_d(pd()->weights_pd(0));
-    const memory_desc_wrapper bias_d(pd()->weights_pd(1));
+    auto MB = CTX_IN_BATCH(DNNL_ARG_SRC);
+
+    DEFINE_ZERO_POINTS_BUFFER(src_zero_point, DNNL_ARG_SRC);
+    DEFINE_ZERO_POINTS_BUFFER(dst_zero_point, DNNL_ARG_DST);
+
+    const memory_desc_wrapper src_d(pd()->src_md());
+    const memory_desc_wrapper dst_d(pd()->dst_md());
+    const memory_desc_wrapper weights_d(pd()->weights_md(0));
+    const memory_desc_wrapper bias_d(pd()->weights_md(1));
 
     const bool with_groups = pd()->with_groups();
 
-    const int G = pd()->G();
-    const int MB = pd()->MB();
-    const int OD = pd()->OD();
-    const int OH = pd()->OH();
-    const int OW = pd()->OW();
-    const int ID = pd()->ID();
-    const int IH = pd()->IH();
-    const int IW = pd()->IW();
+    const auto G = pd()->G();
+    const auto OD = pd()->OD();
+    const auto OH = pd()->OH();
+    const auto OW = pd()->OW();
+    const auto ID = pd()->ID();
+    const auto IH = pd()->IH();
+    const auto IW = pd()->IW();
 
-    const int OC = pd()->OC() / G;
-    const int IC = pd()->IC() / G;
-    const int KD = pd()->KD();
-    const int KH = pd()->KH();
-    const int KW = pd()->KW();
+    const auto OC = pd()->OC() / G;
+    const auto IC = pd()->IC() / G;
+    const auto KD = pd()->KD();
+    const auto KH = pd()->KH();
+    const auto KW = pd()->KW();
 
-    const int KSD = pd()->KSD();
-    const int KSH = pd()->KSH();
-    const int KSW = pd()->KSW();
+    const auto KSD = pd()->KSD();
+    const auto KSH = pd()->KSH();
+    const auto KSW = pd()->KSW();
 
-    const int KDD = pd()->KDD() + 1;
-    const int KDH = pd()->KDH() + 1;
-    const int KDW = pd()->KDW() + 1;
+    const auto KDD = pd()->KDD() + 1;
+    const auto KDH = pd()->KDH() + 1;
+    const auto KDW = pd()->KDW() + 1;
 
-    const int padFront = pd()->padFront();
-    const int padT = pd()->padT();
-    const int padL = pd()->padL();
+    const auto padFront = pd()->padFront();
+    const auto padT = pd()->padT();
+    const auto padL = pd()->padL();
 
-    const int ndims = pd()->desc()->src_desc.ndims;
+    const auto ndims = pd()->desc()->src_desc.ndims;
 
-    const auto &p = pd()->attr()->post_ops_;
+    using namespace data_type;
+    bool is_int_conv = utils::one_of(src_type, s32, s8, u8);
 
-    auto ker = [=](int g, int mb, int oc, int od, int oh,
-            int ow) {
+    auto maybe_oscale = [=](float &d, dim_t g, dim_t oc) {
+        // scale_idx_mult = 1 for per_oc scales and 0, otherwise
+        const int scale_idx_mult
+                = pd()->attr()->output_scales_.mask_ == (1 << 1);
+        const float *scales = pd()->attr()->output_scales_.scales_;
+        d *= scales[(g * OC + oc) * scale_idx_mult];
+    };
+
+    // zp_idx_mult = 1 for per_dim1 zero points and 0, otherwise
+    const int src_zp_idx_mult
+            = !pd()->attr()->zero_points_.common(DNNL_ARG_SRC);
+    const int dst_zp_idx_mult
+            = !pd()->attr()->zero_points_.common(DNNL_ARG_DST);
+
+    auto ker = [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
         acc_data_t d = 0;
-        for (int ic = 0; ic < IC; ++ic)
-        for (int kd = 0; kd < KD; ++kd)
-        for (int kh = 0; kh < KH; ++kh)
-        for (int kw = 0; kw < KW; ++kw) {
-            const int id = od * KSD - padFront + kd * KDD;
-            const int ih = oh * KSH - padT + kh * KDH;
-            const int iw = ow * KSW - padL + kw * KDW;
+        for_(dim_t ic = 0; ic < IC; ++ic)
+        for_(dim_t kd = 0; kd < KD; ++kd)
+        for_(dim_t kh = 0; kh < KH; ++kh)
+        for (dim_t kw = 0; kw < KW; ++kw) {
+            const dim_t id = od * KSD - padFront + kd * KDD;
+            const dim_t ih = oh * KSH - padT + kh * KDH;
+            const dim_t iw = ow * KSW - padL + kw * KDW;
 
             if (id < 0 || id >= ID) continue;
             if (ih < 0 || ih >= IH) continue;
             if (iw < 0 || iw >= IW) continue;
 
-            src_data_t s = 0;
-            wei_data_t w = 0;
-            if (ndims == 5) {
-                s = src[src_d.off(mb, g * IC + ic, id, ih, iw)];
-                w = (with_groups
-                     ? weights[weights_d.off(g, oc, ic, kd, kh, kw)]
-                     : weights[weights_d.off(oc, ic, kd, kh, kw)]);
-            } else if (ndims == 4) {
-                s = src[src_d.off(mb, g * IC + ic, ih, iw)];
-                w = (with_groups
-                     ? weights[weights_d.off(g, oc, ic, kh, kw)]
-                     : weights[weights_d.off(oc, ic, kh, kw)]);
-            } else if (ndims == 3) {
-                s = src[src_d.off(mb, g * IC + ic, iw)];
-                w = (with_groups
-                     ? weights[weights_d.off(g, oc, ic, kw)]
-                     : weights[weights_d.off(oc, ic, kw)]);
-            } else {
-                assert(false);
-            }
+            const auto src_off
+                    = get_data_off(src_d, ndims, mb, g * IC + ic, id, ih, iw);
+            const auto wei_off = get_weights_off(
+                    weights_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
 
-            acc_data_t i_zp = 0;
-            if (input_zero_points)
-                i_zp = input_zero_points[input_zero_points_count == 1 ? 0 : g * IC + ic];
-
-            acc_data_t w_zp = 0;
-            if (weights_zero_points)
-                w_zp = weights_zero_points[weights_zero_points_count == 1 ? 0 : g * OC + oc];
-
-            d += ((acc_data_t)s - i_zp) * ((acc_data_t)w - w_zp);
+            acc_data_t s = static_cast<acc_data_t>(src[src_off]);
+            if (src_zero_point)
+                s -= static_cast<acc_data_t>(
+                        src_zero_point[src_zp_idx_mult * (g * IC + ic)]);
+            d += (acc_data_t)s * weights[wei_off];
         }
         return d;
     };
 
     // help compiler optimize the code
     // constants for plain layouts kernel
-    const mkldnn_strides_t &src_str = src_d.blocking_desc().strides[0];
-    const ptrdiff_t src_ic_stride = src_str[1];
-    const ptrdiff_t src_id_stride = (ndims == 5) ? src_str[2] : 0;
-    const ptrdiff_t src_ih_stride = (ndims >= 4) ? src_str[ndims - 2] : 0;
-    const ptrdiff_t src_iw_stride = (ndims >= 3) ? src_str[ndims - 1] : 0;
-    const mkldnn_strides_t &weights_str = weights_d.blocking_desc().strides[0];
+    const dnnl_dims_t &src_str = src_d.blocking_desc().strides;
+    const dim_t src_ic_stride = src_str[1];
+    const dim_t src_id_stride = (ndims == 5) ? src_str[2] : 0;
+    const dim_t src_ih_stride = (ndims >= 4) ? src_str[ndims - 2] : 0;
+    const dim_t src_iw_stride = (ndims >= 3) ? src_str[ndims - 1] : 0;
+    const dnnl_dims_t &weights_str = weights_d.blocking_desc().strides;
     const int gr_shift = with_groups ? 1 : 0;
-    const ptrdiff_t weights_ic_stride = weights_str[1 + gr_shift];
-    const ptrdiff_t weights_kd_stride
+    const dim_t weights_ic_stride = weights_str[1 + gr_shift];
+    const dim_t weights_kd_stride
             = (ndims == 5) ? weights_str[2 + gr_shift] : 0;
-    const ptrdiff_t weights_kh_stride
+    const dim_t weights_kh_stride
             = (ndims >= 4) ? weights_str[ndims - 2 + gr_shift] : 0;
-    const ptrdiff_t weights_kw_stride
+    const dim_t weights_kw_stride
             = (ndims >= 3) ? weights_str[ndims - 1 + gr_shift] : 0;
 
-    auto ker_plain = [=](int g, int mb, int oc, int od, int oh, int ow) {
+    auto ker_plain = [=](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh,
+                             dim_t ow) {
         assert(3 <= ndims && ndims <= 5);
         acc_data_t d = 0;
-        const size_t src_loc_off = (ndims == 5)
-                ? src_d.off(mb, g * IC, 0, 0, 0)
-                : (ndims == 4) ? src_d.off(mb, g * IC, 0, 0)
-                               : (ndims == 3) ? src_d.off(mb, g * IC, 0) : 0;
 
-        const size_t weights_loc_off = (ndims == 5)
-                ? (with_groups ? weights_d.off(g, oc, 0, 0, 0, 0)
-                               : weights_d.off(oc, 0, 0, 0, 0))
-                : (ndims == 4) ? (with_groups ? weights_d.off(g, oc, 0, 0, 0)
-                                              : weights_d.off(oc, 0, 0, 0))
-                               : (ndims == 3)
-                                ? (with_groups ? weights_d.off(g, oc, 0, 0)
-                                               : weights_d.off(oc, 0, 0))
-                                : 0;
+        const dim_t src_loc_off
+                = get_data_off(src_d, ndims, mb, g * IC, 0, 0, 0);
+        const dim_t weights_loc_off = get_weights_off(
+                weights_d, with_groups, ndims, g, oc, 0, 0, 0, 0);
 
         const src_data_t *__restrict src_loc = src + src_loc_off;
         const wei_data_t *__restrict weights_loc = weights + weights_loc_off;
 
         if (IC > KW) {
-            for (ptrdiff_t kd = 0; kd < KD; ++kd)
-            for (ptrdiff_t kh = 0; kh < KH; ++kh)
-            for (ptrdiff_t kw = 0; kw < KW; ++kw) {
-#ifdef __INTEL_COMPILER
-                // to avoid excessive compiler optimization
-                volatile acc_data_t temp_var{ 0 };
-#endif
-                const ptrdiff_t id = od * KSD - padFront + kd * KDD;
-                const ptrdiff_t ih = oh * KSH - padT + kh * KDH;
-                const ptrdiff_t iw = ow * KSW - padL + kw * KDW;
+            for_(dim_t kd = 0; kd < KD; ++kd)
+            for_(dim_t kh = 0; kh < KH; ++kh)
+            for (dim_t kw = 0; kw < KW; ++kw) {
+                const dim_t id = od * KSD - padFront + kd * KDD;
+                const dim_t ih = oh * KSH - padT + kh * KDH;
+                const dim_t iw = ow * KSW - padL + kw * KDW;
                 if (id < 0 || id >= ID || ih < 0 || ih >= IH || iw < 0
                         || iw >= IW)
                     continue;
-                for (int ic = 0; ic < IC; ++ic) {
-                    const size_t src_off = ic * src_ic_stride
-                            + id * src_id_stride + ih * src_ih_stride
-                            + iw * src_iw_stride;
-                    const size_t weights_off = ic * weights_ic_stride
+
+                for (dim_t ic = 0; ic < IC; ++ic) {
+                    const dim_t src_off = ic + id * src_id_stride
+                            + ih * src_ih_stride + iw * src_iw_stride;
+                    const dim_t weights_off = ic * weights_ic_stride
                             + kd * weights_kd_stride + kh * weights_kh_stride
-                            + kw * weights_kw_stride;
-
-                    src_data_t s = src_loc[src_off];
-                    wei_data_t w = weights_loc[weights_off];
-
-                    acc_data_t i_zp = 0;
-                    if (input_zero_points)
-                        i_zp = input_zero_points[input_zero_points_count == 1 ? 0 : g * IC + ic];
-
-                    acc_data_t w_zp = 0;
-                    if (weights_zero_points)
-                        w_zp = weights_zero_points[weights_zero_points_count == 1 ? 0 : g * OC + oc];
-
-                    d += ((acc_data_t)s - i_zp) * ((acc_data_t)w - w_zp);
+                            + kw;
+                    acc_data_t s = static_cast<acc_data_t>(src_loc[src_off]);
+                    if (src_zero_point)
+                        s -= static_cast<acc_data_t>(
+                                src_zero_point[src_zp_idx_mult
+                                        * (g * IC + ic)]);
+                    d += (acc_data_t)s * weights_loc[weights_off];
                 }
             }
         } else {
-            for (ptrdiff_t ic = 0; ic < IC; ++ic)
-            for (ptrdiff_t kd = 0; kd < KD; ++kd)
-            for (ptrdiff_t kh = 0; kh < KH; ++kh)
-            for (ptrdiff_t kw = 0; kw < KW; ++kw) {
-#ifdef __INTEL_COMPILER
-                // to avoid excessive compiler optimization
-                volatile acc_data_t temp_var{ 0 };
-#endif
-                const ptrdiff_t id = od * KSD - padFront + kd * KDD;
-                const ptrdiff_t ih = oh * KSH - padT + kh * KDH;
-                const ptrdiff_t iw = ow * KSW - padL + kw * KDW;
+            for_(dim_t ic = 0; ic < IC; ++ic)
+            for_(dim_t kd = 0; kd < KD; ++kd)
+            for_(dim_t kh = 0; kh < KH; ++kh)
+            for (dim_t kw = 0; kw < KW; ++kw) {
+                const dim_t id = od * KSD - padFront + kd * KDD;
+                const dim_t ih = oh * KSH - padT + kh * KDH;
+                const dim_t iw = ow * KSW - padL + kw * KDW;
                 if (id < 0 || id >= ID || ih < 0 || ih >= IH || iw < 0
                         || iw >= IW)
                     continue;
-                const ptrdiff_t src_off = ic * src_ic_stride
-                        + id * src_id_stride + ih * src_ih_stride
-                        + iw * src_iw_stride;
-                const ptrdiff_t weights_off = ic * weights_ic_stride
-                        + kd * weights_kd_stride + kh * weights_kh_stride
-                        + kw * weights_kw_stride;
 
-                src_data_t s = src_loc[src_off];
-                wei_data_t w = weights_loc[weights_off];
-
-                acc_data_t i_zp = 0;
-                if (input_zero_points)
-                    i_zp = input_zero_points[input_zero_points_count == 1 ? 0 : g * IC + ic];
-
-                acc_data_t w_zp = 0;
-                if (weights_zero_points)
-                    w_zp = weights_zero_points[weights_zero_points_count == 1 ? 0 : g * OC + oc];
-
-                d += ((acc_data_t)s - i_zp) * ((acc_data_t)w - w_zp);
+                const dim_t src_off = ic + id * src_id_stride
+                        + ih * src_ih_stride + iw * src_iw_stride;
+                const dim_t weights_off = ic * weights_ic_stride
+                        + kd * weights_kd_stride + kh * weights_kh_stride + kw;
+                acc_data_t s = static_cast<acc_data_t>(src_loc[src_off]);
+                if (src_zero_point)
+                    s -= static_cast<acc_data_t>(
+                            src_zero_point[src_zp_idx_mult * (g * IC + ic)]);
+                d += (acc_data_t)s * weights_loc[weights_off];
             }
         }
         return d;
     };
 
     parallel_nd(G, MB, OC, OD, OH, OW,
-        [&](int g, int mb, int oc, int od, int oh, int ow) {
-        float a_fp = bias
-            ? get_bias(bias, bias_d.off(g * OC + oc),
-                    pd()->desc()->bias_desc.data_type)
-            : 0;
-        if (src_d.is_plain() && weights_d.is_plain())
-            a_fp += ker_plain(g, mb, oc, od, oh, ow);
-        else
-            a_fp += ker(g, mb, oc, od, oh, ow);
+            [&](dim_t g, dim_t mb, dim_t oc, dim_t od, dim_t oh, dim_t ow) {
+                float a = bias ? get_bias(bias, bias_d.off(g * OC + oc),
+                                  pd()->desc()->bias_desc.data_type)
+                               : 0;
 
-        if (!pd()->attr()->output_scales_.has_default_values()) {
-            a_fp *= pd()->attr()->output_scales_.scales_[g * OC + oc];
-        }
-
-        int eltwise_inj_idx = 0;
-        int depthwise_inj_idx = 0;
-        for (int i = 0; i < p.len_; i++) {
-            auto &post_op = p.entry_[i];
-            if (post_op.is_eltwise()) {
-                a_fp = eltwise_injectors[eltwise_inj_idx]->compute_scalar(a_fp);
-                eltwise_inj_idx++;
-            } else if (post_op.is_depthwise()) {
-                auto depthwise_weights = post_op.depthwise.weights_data;
-                auto depthwise_bias = post_op.depthwise.biases_data;
-
-                a_fp = depthwise_injectors[depthwise_inj_idx]->compute_scalar(a_fp,
-                                                                              depthwise_weights + g * OC + oc,
-                                                                              depthwise_bias + g * OC + oc);
-                depthwise_inj_idx++;
-            } else if (post_op.is_quantization()) {
-                auto quant = post_op.quantization;
-                float cl = quant.crop_low_data->shifts_[quant.crop_low_data->count_ == 1 ? 0 : g * OC + oc];
-                float ch = quant.crop_high_data->shifts_[quant.crop_high_data->count_ == 1 ? 0 : g * OC + oc];
-                float isc = quant.input_scale_data->scales_[quant.input_scale_data->count_ == 1 ? 0 : g * OC + oc];
-                float ish = quant.input_shift_data->shifts_[quant.input_shift_data->count_ == 1 ? 0 : g * OC + oc];
-                float osc = quant.output_scale_data->scales_[quant.output_scale_data->count_ == 1 ? 0 : g * OC + oc];
-                float osh = quant.output_shift_data->shifts_[quant.output_shift_data->count_ == 1 ? 0 : g * OC + oc];
-
-                a_fp = nstl::min(ch, nstl::max(cl, a_fp));
-                a_fp = a_fp * isc + ish;
-                a_fp = roundf(a_fp);
-                a_fp = a_fp * osc + osh;
-            } else if (post_op.is_sum()) {
-                if (ndims == 5)
-                    a_fp += get_sum((char*)dst, dst_d.off(mb, g * OC + oc, od, oh, ow), post_op.sum.data_type);
-                else if (ndims == 4)
-                    a_fp += get_sum((char*)dst, dst_d.off(mb, g * OC + oc, oh, ow), post_op.sum.data_type);
-                else if (ndims == 3)
-                    a_fp += get_sum((char*)dst, dst_d.off(mb, g * OC + oc, ow), post_op.sum.data_type);
+                if (src_d.is_plain() && weights_d.is_plain()
+                        && src_ic_stride == 1 && weights_kw_stride == 1)
+                    a += ker_plain(g, mb, oc, od, oh, ow);
                 else
-                    assert(false);
-            }
-        }
+                    a += ker(g, mb, oc, od, oh, ow);
 
-        if (data_traits<dst_data_t>::data_type != data_type::f32) {
-            switch (pd()->attr()->round_mode_) {
-                case round_mode::down:    a_fp = floorf(a_fp); break;
-                case round_mode::nearest: a_fp = nearbyintf(a_fp); break;
-            }
-        }
+                dim_t dst_off = get_data_off(
+                        dst_d, ndims, mb, g * OC + oc, od, oh, ow);
 
-        if (ndims == 5)
-            dst[dst_d.off(mb, g*OC + oc, od, oh, ow)] = saturate<dst_data_t>(a_fp);
-        else if (ndims == 4)
-            dst[dst_d.off(mb, g*OC + oc, oh, ow)] = saturate<dst_data_t>(a_fp);
-        else if (ndims == 3)
-            dst[dst_d.off(mb, g*OC + oc, ow)] = saturate<dst_data_t>(a_fp);
-        else
-            assert(false);
-   });
+                dim_t dst_l_off = (mb * OC * G + g * OC + oc) * OD * OH * OW
+                        + od * OH * OW + oh * OW + ow;
+
+                maybe_oscale(a, g, oc);
+
+                ref_post_ops_t::args_t args;
+                args.dst_val = dst[dst_off];
+                args.ctx = &ctx;
+                args.l_offset = dst_l_off;
+                args.dst_md = pd()->dst_md();
+                ref_post_ops->execute(a, args);
+
+                if (dst_zero_point)
+                    a += static_cast<acc_data_t>(
+                            dst_zero_point[dst_zp_idx_mult * (g * OC + oc)]);
+
+                if (is_int_conv)
+                    dst[dst_off] = qz_a1b0<float, dst_data_t>()(a);
+                else
+                    dst[dst_off] = saturate<dst_data_t>(a);
+            });
+    return status::success;
 }
 
 template <data_type_t diff_src_type, data_type_t wei_type,
-         data_type_t diff_dst_type, data_type_t acc_type>
-void ref_convolution_bwd_data_t<diff_src_type, wei_type, diff_dst_type,
-     acc_type>::execute_backward_data() const {
-    auto diff_dst = reinterpret_cast<const diff_dst_data_t*>(
-            this->input_memory(0));
-    auto weights = reinterpret_cast<const wei_data_t*>(this->input_memory(1));
-    auto bias = reinterpret_cast<const char *>(this->input_memory(2));
-    auto diff_src = reinterpret_cast<diff_src_data_t*>(this->memory());
+        data_type_t diff_dst_type, data_type_t acc_type>
+status_t ref_convolution_bwd_data_t<diff_src_type, wei_type, diff_dst_type,
+        acc_type>::execute_backward_data(const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
+    auto weights = CTX_IN_MEM(const wei_data_t *, DNNL_ARG_WEIGHTS);
+    auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
+    auto diff_src = CTX_OUT_MEM(diff_src_data_t *, DNNL_ARG_DIFF_SRC);
 
-    const memory_desc_wrapper diff_dst_d(pd()->diff_dst_pd());
-    const memory_desc_wrapper diff_src_d(pd()->diff_src_pd());
-    const memory_desc_wrapper weights_d(pd()->weights_pd(0));
-    const memory_desc_wrapper bias_d(pd()->weights_pd(1));
+    auto MB = CTX_IN_BATCH(DNNL_ARG_DIFF_DST);
+
+    const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
+    const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
+    const memory_desc_wrapper weights_d(pd()->weights_md(0));
+    const memory_desc_wrapper bias_d(pd()->weights_md(1));
 
     const bool with_groups = pd()->with_groups();
 
-    const int G = pd()->G();
-    const int MB = pd()->MB();
-    const int OD = pd()->OD();
-    const int OH = pd()->OH();
-    const int OW = pd()->OW();
-    const int ID = pd()->ID();
-    const int IH = pd()->IH();
-    const int IW = pd()->IW();
+    const auto G = pd()->G();
+    const auto OD = pd()->OD();
+    const auto OH = pd()->OH();
+    const auto OW = pd()->OW();
+    const auto ID = pd()->ID();
+    const auto IH = pd()->IH();
+    const auto IW = pd()->IW();
 
-    const int OC = pd()->OC() / G;
-    const int IC = pd()->IC() / G;
-    const int KD = pd()->KD();
-    const int KH = pd()->KH();
-    const int KW = pd()->KW();
+    const auto OC = pd()->OC() / G;
+    const auto IC = pd()->IC() / G;
+    const auto KD = pd()->KD();
+    const auto KH = pd()->KH();
+    const auto KW = pd()->KW();
 
-    const int KSD = pd()->KSD();
-    const int KSH = pd()->KSH();
-    const int KSW = pd()->KSW();
+    const auto KSD = pd()->KSD();
+    const auto KSH = pd()->KSH();
+    const auto KSW = pd()->KSW();
 
-    const int KDD = pd()->KDD() + 1;
-    const int KDH = pd()->KDH() + 1;
-    const int KDW = pd()->KDW() + 1;
+    const auto KDD = pd()->KDD() + 1;
+    const auto KDH = pd()->KDH() + 1;
+    const auto KDW = pd()->KDW() + 1;
 
-    const int padFront = pd()->padFront();
-    const int padT = pd()->padT();
-    const int padL = pd()->padL();
+    const auto padFront = pd()->padFront();
+    const auto padT = pd()->padT();
+    const auto padL = pd()->padL();
 
-    const int ndims = pd()->desc()->diff_src_desc.ndims;
+    const auto ndims = pd()->desc()->diff_src_desc.ndims;
 
     const auto &p = pd()->attr()->post_ops_;
 
-    auto ker = [=](int g, int mb, int ic, int id, int ih,
-            int iw) {
+    using namespace data_type;
+    bool is_int_conv = utils::one_of(diff_dst_type, s32, s8, u8);
+
+    auto maybe_oscale = [=](float &d, dim_t g, dim_t ic) {
+        /* scale_idx_mult = 1 for per_oc scales and 0, otherwise */
+        const int scale_idx_mult
+                = pd()->attr()->output_scales_.mask_ == (1 << 1);
+        const float *scales = pd()->attr()->output_scales_.scales_;
+        d *= scales[(g * IC + ic) * scale_idx_mult];
+    };
+
+    auto ker = [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
         acc_data_t d = 0;
-        for (int oc = 0; oc < OC; ++oc)
-        for (int kd = 0; kd < KD; ++kd)
-        for (int kh = 0; kh < KH; ++kh)
-        for (int kw = 0; kw < KW; ++kw) {
-            if (iw + padL < kw * KDW
-                || ih + padT < kh * KDH
-                || id + padFront < kd * KDD)
+        for_(dim_t oc = 0; oc < OC; ++oc)
+        for_(dim_t kd = 0; kd < KD; ++kd)
+        for_(dim_t kh = 0; kh < KH; ++kh)
+        for (dim_t kw = 0; kw < KW; ++kw) {
+            if (iw + padL < kw * KDW || ih + padT < kh * KDH
+                    || id + padFront < kd * KDD)
                 continue;
-            int ow = iw - kw * KDW + padL;
-            int oh = ih - kh * KDH + padT;
-            int od = id - kd * KDD + padFront;
-            if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0)
-                continue;
+            dim_t ow = iw - kw * KDW + padL;
+            dim_t oh = ih - kh * KDH + padT;
+            dim_t od = id - kd * KDD + padFront;
+            if (ow % KSW != 0 || oh % KSH != 0 || od % KSD != 0) continue;
 
             ow /= KSW;
             oh /= KSH;
             od /= KSD;
 
             if (od < OD && oh < OH && ow < OW) {
-                if (ndims == 5)
-                    d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC
-                        + oc, od, oh, ow)] * (with_groups
-                        ? weights[weights_d.off(g, oc, ic, kd, kh, kw)]
-                        : weights[weights_d.off(oc, ic, kd, kh, kw)]);
-                else if (ndims == 4)
-                    d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC
-                        + oc, oh, ow)] * (with_groups
-                        ? weights[weights_d.off(g, oc, ic, kh, kw)]
-                        : weights[weights_d.off(oc, ic, kh, kw)]);
-                else if (ndims == 3)
-                    d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC
-                        + oc, ow)] * (with_groups
-                        ? weights[weights_d.off(g, oc, ic, kw)]
-                        : weights[weights_d.off(oc, ic, kw)]);
-                else
-                    assert(false);
+                const auto diff_dst_off = get_data_off(
+                        diff_dst_d, ndims, mb, g * OC + oc, od, oh, ow);
+                const auto weights_off = get_weights_off(
+                        weights_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
+
+                d += (acc_data_t)diff_dst[diff_dst_off] * weights[weights_off];
             }
         }
         return d;
@@ -414,193 +364,177 @@ void ref_convolution_bwd_data_t<diff_src_type, wei_type, diff_dst_type,
 
     // help compiler optimize the code
     // constants for plain layouts kernel
-    const mkldnn_strides_t &diff_dst_str
-            = diff_dst_d.blocking_desc().strides[0];
-    const ptrdiff_t diff_dst_oc_stride = diff_dst_str[1];
-    const ptrdiff_t diff_dst_ow_stride = diff_dst_str[ndims - 1];
-    const ptrdiff_t diff_dst_oh_stride
-            = (ndims >= 4) ? diff_dst_str[ndims - 2] : 0;
-    const ptrdiff_t diff_dst_od_stride
-            = (ndims >= 5) ? diff_dst_str[ndims - 3] : 0;
+    const dnnl_dims_t &diff_dst_str = diff_dst_d.blocking_desc().strides;
+    const dim_t diff_dst_oc_stride = diff_dst_str[1];
+    const dim_t diff_dst_ow_stride = diff_dst_str[ndims - 1];
+    const dim_t diff_dst_oh_stride = (ndims >= 4) ? diff_dst_str[ndims - 2] : 0;
+    const dim_t diff_dst_od_stride = (ndims >= 5) ? diff_dst_str[ndims - 3] : 0;
 
-    const mkldnn_strides_t &weights_str = weights_d.blocking_desc().strides[0];
+    const dnnl_dims_t &weights_str = weights_d.blocking_desc().strides;
     const int gr_shift = with_groups ? 1 : 0;
-    const ptrdiff_t weights_oc_stride = weights_str[0 + gr_shift];
-    const ptrdiff_t weights_kw_stride = weights_str[ndims - 1 + gr_shift];
-    const ptrdiff_t weights_kh_stride
+    const dim_t weights_oc_stride = weights_str[0 + gr_shift];
+    const dim_t weights_kw_stride = weights_str[ndims - 1 + gr_shift];
+    const dim_t weights_kh_stride
             = (ndims >= 4) ? weights_str[ndims - 2 + gr_shift] : 0;
-    const ptrdiff_t weights_kd_stride
+    const dim_t weights_kd_stride
             = (ndims >= 4) ? weights_str[ndims - 3 + gr_shift] : 0;
 
-    auto ker_plain = [=](int g, int mb, int ic, int id, int ih, int iw) {
+    auto ker_plain = [=](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih,
+                             dim_t iw) {
         assert(3 <= ndims && ndims <= 5);
         acc_data_t d = 0;
-        const size_t diff_dst_loc_off = (ndims == 5)
-                ? diff_dst_d.off(mb, g * OC, 0, 0, 0)
-                : (ndims == 4)
-                        ? diff_dst_d.off(mb, g * OC, 0, 0)
-                        : (ndims == 3) ? diff_dst_d.off(mb, g * OC, 0) : 0;
-        const size_t weights_loc_off = (ndims == 5)
-                ? with_groups ? weights_d.off(g, 0, ic, 0, 0, 0)
-                              : weights_d.off(0, ic, 0, 0, 0)
-                : (ndims == 4) ? with_groups ? weights_d.off(g, 0, ic, 0, 0)
-                                             : weights_d.off(0, ic, 0, 0)
-                               : (ndims == 3) ? with_groups
-                                        ? weights_d.off(g, 0, ic, 0)
-                                        : weights_d.off(0, ic, 0)
-                                              : 0;
+        const dim_t diff_dst_loc_off
+                = get_data_off(diff_dst_d, ndims, mb, g * OC, 0, 0, 0);
+        const dim_t weights_loc_off = get_weights_off(
+                weights_d, with_groups, ndims, g, 0, ic, 0, 0, 0);
 
         const diff_dst_data_t *__restrict diff_dst_loc
                 = diff_dst + diff_dst_loc_off;
         const wei_data_t *__restrict weights_loc = weights + weights_loc_off;
 
         if (OC > KW) {
-            for (ptrdiff_t kd = 0; kd < KD; ++kd)
-            for (ptrdiff_t kh = 0; kh < KH; ++kh)
-            for (ptrdiff_t kw = 0; kw < KW; ++kw) {
-#ifdef __INTEL_COMPILER
-                // to avoid excessive compiler optimization
-                volatile acc_data_t temp_var{ 0 };
-#endif
-                ptrdiff_t ow = iw - kw * KDW + padL;
-                ptrdiff_t oh = ih - kh * KDH + padT;
-                ptrdiff_t od = id - kd * KDD + padFront;
+            for_(dim_t kd = 0; kd < KD; ++kd)
+            for_(dim_t kh = 0; kh < KH; ++kh)
+            for (dim_t kw = 0; kw < KW; ++kw) {
+                dim_t ow = iw - kw * KDW + padL;
+                dim_t oh = ih - kh * KDH + padT;
+                dim_t od = id - kd * KDD + padFront;
                 if (ow < 0 || oh < 0 || od < 0 || ow % KSW != 0 || oh % KSH != 0
                         || od % KSD != 0)
                     continue;
                 ow /= KSW;
                 oh /= KSH;
                 od /= KSD;
-                if (od >= OD || oh >= OH || ow >= OW)
-                    continue;
-                for (ptrdiff_t oc = 0; oc < OC; ++oc) {
-                    const ptrdiff_t diff_dst_off = oc * diff_dst_oc_stride
-                            + od * diff_dst_od_stride + oh * diff_dst_oh_stride
-                            + ow * diff_dst_ow_stride;
-                    const ptrdiff_t weights_off = oc * weights_oc_stride
+                if (od >= OD || oh >= OH || ow >= OW) continue;
+                for (dim_t oc = 0; oc < OC; ++oc) {
+                    const dim_t diff_dst_off = oc + od * diff_dst_od_stride
+                            + oh * diff_dst_oh_stride + ow * diff_dst_ow_stride;
+                    const dim_t weights_off = oc * weights_oc_stride
                             + kd * weights_kd_stride + kh * weights_kh_stride
-                            + kw * weights_kw_stride;
-                    auto dd = (acc_data_t)diff_dst_loc[diff_dst_off]
+                            + kw;
+                    d += (acc_data_t)diff_dst_loc[diff_dst_off]
                             * weights_loc[weights_off];
-                    d += dd;
                 }
             }
         } else {
-            for (ptrdiff_t oc = 0; oc < OC; ++oc)
-            for (ptrdiff_t kd = 0; kd < KD; ++kd)
-            for (ptrdiff_t kh = 0; kh < KH; ++kh)
-            for (ptrdiff_t kw = 0; kw < KW; ++kw) {
-#ifdef __INTEL_COMPILER
-                // to avoid excessive compiler optimization
-                volatile acc_data_t temp_var{ 0 };
-#endif
-                ptrdiff_t ow = iw - kw * KDW + padL;
-                ptrdiff_t oh = ih - kh * KDH + padT;
-                ptrdiff_t od = id - kd * KDD + padFront;
-                if (ow < 0 || oh < 0 || od < 0 || ow % KSW != 0 || oh % KSH != 0
-                        || od % KSD != 0)
-                    continue;
-                ow /= KSW;
-                oh /= KSH;
-                od /= KSD;
-                if (od >= OD || oh >= OH || ow >= OW)
-                    continue;
-                const ptrdiff_t diff_dst_off = oc * diff_dst_oc_stride
-                        + od * diff_dst_od_stride + oh * diff_dst_oh_stride
-                        + ow * diff_dst_ow_stride;
-                const ptrdiff_t weights_off = oc * weights_oc_stride
-                        + kd * weights_kd_stride + kh * weights_kh_stride
-                        + kw * weights_kw_stride;
-                d += (acc_data_t)diff_dst_loc[diff_dst_off]
-                        * weights_loc[weights_off];
+            for_(dim_t oc = 0; oc < OC; ++oc)
+            for_(dim_t kd = 0; kd < KD; ++kd)
+            for (dim_t kh = 0; kh < KH; ++kh) {
+                // Note: placing these 2 params outside the `kw-loop` because
+                // of a compiler-generated bug.
+                dim_t od = id - kd * KDD + padFront;
+                const dim_t weights_off = oc * weights_oc_stride
+                        + kd * weights_kd_stride + kh * weights_kh_stride;
+                for (dim_t kw = 0; kw < KW; ++kw) {
+                    dim_t ow = iw - kw * KDW + padL;
+                    dim_t oh = ih - kh * KDH + padT;
+                    if (ow < 0 || oh < 0 || od < 0 || ow % KSW != 0
+                            || oh % KSH != 0 || od % KSD != 0)
+                        continue;
+                    ow /= KSW;
+                    oh /= KSH;
+                    od /= KSD;
+                    if (od >= OD || oh >= OH || ow >= OW) continue;
+                    const dim_t diff_dst_off = oc + od * diff_dst_od_stride
+                            + oh * diff_dst_oh_stride + ow * diff_dst_ow_stride;
+                    const dim_t weights_off_ = weights_off + kw;
+                    d += (acc_data_t)diff_dst_loc[diff_dst_off]
+                            * weights_loc[weights_off_];
+                }
             }
         }
         return d;
     };
 
     parallel_nd(G, MB, IC, ID, IH, IW,
-        [&](int g, int mb, int ic, int id, int ih, int iw) {
-        auto ds_idx = (ndims == 5)
-            ? diff_src_d.off(mb, g*IC + ic, id, ih, iw)
-            : (ndims == 4)
-            ? diff_src_d.off(mb, g*IC + ic, ih, iw)
-            : diff_src_d.off(mb, g*IC + ic, iw);
-        float a = bias
-            ? get_bias(bias, bias_d.off(g * IC + ic),
-                    pd()->desc()->bias_desc.data_type)
-            : 0;
-        if (diff_dst_d.is_plain() && weights_d.is_plain())
-            a += ker_plain(g, mb, ic, id, ih, iw);
-        else
-            a += ker(g, mb, ic, id, ih, iw);
+            [&](dim_t g, dim_t mb, dim_t ic, dim_t id, dim_t ih, dim_t iw) {
+                auto ds_idx = get_data_off(
+                        diff_src_d, ndims, mb, g * IC + ic, id, ih, iw);
+                float a = bias ? get_bias(bias, bias_d.off(g * IC + ic),
+                                  pd()->desc()->bias_desc.data_type)
+                               : 0;
 
-        int depthwise_inj_idx = 0;
-        for (int i = 0; i < p.len_; i++) {
-            auto &post_op = p.entry_[i];
-            if (post_op.is_depthwise()) {
-                auto depthwise_weights = post_op.depthwise.weights_data;
-                auto depthwise_bias = post_op.depthwise.biases_data;
+                if (diff_dst_d.is_plain() && weights_d.is_plain()
+                        && diff_dst_oc_stride == 1 && weights_kw_stride == 1)
+                    a += ker_plain(g, mb, ic, id, ih, iw);
+                else
+                    a += ker(g, mb, ic, id, ih, iw);
 
-                a = depthwise_injectors[depthwise_inj_idx]->compute_scalar(a, depthwise_weights + g * IC + ic, depthwise_bias + g * IC + ic);
-            }
-            depthwise_inj_idx++;
-        }
+                int depthwise_inj_idx = 0;
+                for (int i = 0; i < p.len(); i++) {
+                    auto &post_op = p.entry_[i];
+                    if (post_op.is_depthwise()) {
+                        auto depthwise_weights = post_op.depthwise.weights_data;
+                        auto depthwise_bias = post_op.depthwise.biases_data;
 
-        diff_src[ds_idx] = saturate<diff_src_data_t>(a);
-    });
+                        a = depthwise_injectors[depthwise_inj_idx]->compute_scalar(a, depthwise_weights + g * IC + ic, depthwise_bias + g * IC + ic);
+                    }
+                    depthwise_inj_idx++;
+                }
+
+                maybe_oscale(a, g, ic);
+                if (is_int_conv)
+                    diff_src[ds_idx] = saturate_and_round<diff_src_data_t>(a);
+                else
+                    diff_src[ds_idx] = saturate<diff_src_data_t>(a);
+            });
+    return status::success;
 }
 
 template <data_type_t src_type, data_type_t diff_wei_type,
-         data_type_t diff_dst_type, data_type_t acc_type>
-void ref_convolution_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
-     acc_type>::execute_backward_weights() const {
-    auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
-    auto diff_dst = reinterpret_cast<const diff_dst_data_t *>(
-            this->input_memory(1));
-    auto diff_weights = reinterpret_cast<diff_wei_data_t*>(this->memory(0));
-    auto diff_bias = reinterpret_cast<diff_wei_data_t *>(this->memory(1));
+        data_type_t diff_dst_type, data_type_t acc_type>
+status_t ref_convolution_bwd_weights_t<src_type, diff_wei_type, diff_dst_type,
+        acc_type>::execute_backward_weights(const exec_ctx_t &ctx) const {
+    auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
+    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
+    auto diff_weights = CTX_OUT_MEM(diff_wei_data_t *, DNNL_ARG_DIFF_WEIGHTS);
+    auto diff_bias = CTX_OUT_MEM(diff_wei_data_t *, DNNL_ARG_DIFF_BIAS);
 
-    const memory_desc_wrapper src_d(pd()->src_pd());
-    const memory_desc_wrapper diff_dst_d(pd()->diff_dst_pd());
-    const memory_desc_wrapper diff_weights_d(pd()->diff_weights_pd(0));
-    const memory_desc_wrapper diff_bias_d(pd()->diff_weights_pd(1));
+    const memory_desc_wrapper src_d(pd()->src_md());
+    const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
+    const memory_desc_wrapper diff_weights_d(pd()->diff_weights_md(0));
+    const memory_desc_wrapper diff_bias_d(pd()->diff_weights_md(1));
 
     const bool with_groups = pd()->with_groups();
 
-    const int G = pd()->G();
-    const int MB = pd()->MB();
-    const int OD = pd()->OD();
-    const int OH = pd()->OH();
-    const int OW = pd()->OW();
-    const int ID = pd()->ID();
-    const int IH = pd()->IH();
-    const int IW = pd()->IW();
+    const auto G = pd()->G();
+    const auto MB = pd()->MB();
+    const auto OD = pd()->OD();
+    const auto OH = pd()->OH();
+    const auto OW = pd()->OW();
+    const auto ID = pd()->ID();
+    const auto IH = pd()->IH();
+    const auto IW = pd()->IW();
 
-    const int OC = pd()->OC() / G;
-    const int IC = pd()->IC() / G;
-    const int KD = pd()->KD();
-    const int KH = pd()->KH();
-    const int KW = pd()->KW();
+    const auto OC = pd()->OC() / G;
+    const auto IC = pd()->IC() / G;
+    const auto KD = pd()->KD();
+    const auto KH = pd()->KH();
+    const auto KW = pd()->KW();
 
-    const int KSD = pd()->KSD();
-    const int KSH = pd()->KSH();
-    const int KSW = pd()->KSW();
+    const auto KSD = pd()->KSD();
+    const auto KSH = pd()->KSH();
+    const auto KSW = pd()->KSW();
 
-    const int KDD = pd()->KDD() + 1;
-    const int KDH = pd()->KDH() + 1;
-    const int KDW = pd()->KDW() + 1;
+    const auto KDD = pd()->KDD() + 1;
+    const auto KDH = pd()->KDH() + 1;
+    const auto KDW = pd()->KDW() + 1;
 
-    const int padFront = pd()->padFront();
-    const int padT = pd()->padT();
-    const int padL = pd()->padL();
+    const auto padFront = pd()->padFront();
+    const auto padT = pd()->padT();
+    const auto padL = pd()->padL();
 
-    const int ndims = pd()->desc()->src_desc.ndims;
+    const auto ndims = pd()->desc()->src_desc.ndims;
 
-auto ker = [=](acc_data_t &d, int g, int oc, int ic, int kd, int kh, int kw) {
-        for (int mb = 0; mb < MB; ++mb)
-        for (int od = 0; od < OD; ++od)
-        for (int oh = 0; oh < OH; ++oh)
-        for (int ow = 0; ow < OW; ++ow) {
+    using namespace data_type;
+    bool is_int_conv = utils::one_of(src_type, s32, s8, u8);
+
+    auto ker = [=](acc_data_t &d, dim_t g, dim_t oc, dim_t ic, dim_t kd,
+                       dim_t kh, dim_t kw) {
+        for_(dim_t mb = 0; mb < MB; ++mb)
+        for_(dim_t od = 0; od < OD; ++od)
+        for_(dim_t oh = 0; oh < OH; ++oh)
+        for (dim_t ow = 0; ow < OW; ++ow) {
             if (ow * KSW + kw * KDW < padL || oh * KSH + kh * KDH < padT
                     || od * KSD + kd * KDD < padFront
                     || ow * KSW + kw * KDW >= IW + padL
@@ -608,158 +542,143 @@ auto ker = [=](acc_data_t &d, int g, int oc, int ic, int kd, int kh, int kw) {
                     || od * KSD + kd * KDD >= ID + padFront)
                 continue;
 
-            int id = od * KSD - padFront + kd * KDD;
-            int ih = oh * KSH - padT + kh * KDH;
-            int iw = ow * KSW - padL + kw * KDW;
-            if (ndims == 5)
-                d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, od,
-                    oh, ow)] * src[src_d.off(mb, g*IC + ic, id, ih, iw)];
-            else if (ndims == 4)
-                d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, oh, ow)]
-                    * src[src_d.off(mb, g*IC + ic, ih, iw)];
-            else if (ndims == 3)
-                d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, ow)]
-                    * src[src_d.off(mb, g*IC + ic, iw)];
-            else
-                assert(false);
+            dim_t id = od * KSD - padFront + kd * KDD;
+            dim_t ih = oh * KSH - padT + kh * KDH;
+            dim_t iw = ow * KSW - padL + kw * KDW;
+
+            const auto diff_dst_off = get_data_off(
+                    diff_dst_d, ndims, mb, g * OC + oc, od, oh, ow);
+            const auto src_off
+                    = get_data_off(src_d, ndims, mb, g * IC + ic, id, ih, iw);
+
+            d += (acc_data_t)diff_dst[diff_dst_off] * src[src_off];
         }
     };
 
-    auto ker_plain = [=](acc_data_t &d, int g, int oc, int ic, int kd, int kh,
-                             int kw) {
+    auto ker_plain = [=](acc_data_t &d, dim_t g, dim_t oc, dim_t ic, dim_t kd,
+                             dim_t kh, dim_t kw) {
         assert(3 <= ndims && ndims <= 5);
         // help compiler optimize the code
         // constants for plain layouts kernel
-        const mkldnn_strides_t &diff_dst_str
-                = diff_dst_d.blocking_desc().strides[0];
-        const ptrdiff_t diff_dst_mb_stride = diff_dst_str[0];
-        const ptrdiff_t diff_dst_ow_stride = diff_dst_str[ndims - 1];
-        const ptrdiff_t diff_dst_oh_stride
+        const dnnl_dims_t &diff_dst_str = diff_dst_d.blocking_desc().strides;
+        const dim_t diff_dst_mb_stride = diff_dst_str[0];
+        const dim_t diff_dst_ow_stride = diff_dst_str[ndims - 1];
+        const dim_t diff_dst_oh_stride
                 = (ndims >= 4) ? diff_dst_str[ndims - 2] : 0;
-        const ptrdiff_t diff_dst_od_stride
+        const dim_t diff_dst_od_stride
                 = (ndims >= 5) ? diff_dst_str[ndims - 3] : 0;
-        const mkldnn_strides_t &src_str = src_d.blocking_desc().strides[0];
-        const ptrdiff_t src_mb_stride = src_str[0];
-        const ptrdiff_t src_iw_stride = src_str[ndims - 1];
-        const ptrdiff_t src_ih_stride = (ndims >= 4) ? src_str[ndims - 2] : 0;
-        const ptrdiff_t src_id_stride = (ndims >= 5) ? src_str[ndims - 3] : 0;
+        const dnnl_dims_t &src_str = src_d.blocking_desc().strides;
+        const dim_t src_mb_stride = src_str[0];
+        const dim_t src_iw_stride = src_str[ndims - 1];
+        const dim_t src_ih_stride = (ndims >= 4) ? src_str[ndims - 2] : 0;
+        const dim_t src_id_stride = (ndims >= 5) ? src_str[ndims - 3] : 0;
 
-        const size_t diff_dst_loc_off = (ndims == 5)
-                ? diff_dst_d.off(0, g * OC + oc, 0, 0, 0)
-                : (ndims == 4)
-                        ? diff_dst_d.off(0, g * OC + oc, 0, 0)
-                        : (ndims == 3) ? diff_dst_d.off(0, g * OC + oc, 0) : 0;
-
-        const size_t src_loc_off = (ndims == 5)
-                ? src_d.off(0, g * IC + ic, 0, 0, 0)
-                : (ndims == 4)
-                        ? src_d.off(0, g * IC + ic, 0, 0)
-                        : (ndims == 3) ? src_d.off(0, g * IC + ic, 0) : 0;
+        const dim_t diff_dst_loc_off
+                = get_data_off(diff_dst_d, ndims, 0, g * OC + oc, 0, 0, 0);
+        const dim_t src_loc_off
+                = get_data_off(src_d, ndims, 0, g * IC + ic, 0, 0, 0);
 
         const diff_dst_data_t *__restrict diff_dst_loc
                 = diff_dst + diff_dst_loc_off;
         const src_data_t *__restrict src_loc = src + src_loc_off;
 
-        for (ptrdiff_t mb = 0; mb < MB; ++mb)
-        for (ptrdiff_t od = 0; od < OD; ++od)
-        for (ptrdiff_t oh = 0; oh < OH; ++oh)
-        for (ptrdiff_t ow = 0; ow < OW; ++ow) {
-            const ptrdiff_t id = od * KSD - padFront + kd * KDD;
-            const ptrdiff_t ih = oh * KSH - padT + kh * KDH;
-            const ptrdiff_t iw = ow * KSW - padL + kw * KDW;
+        for_(dim_t mb = 0; mb < MB; ++mb)
+        for_(dim_t od = 0; od < OD; ++od)
+        for_(dim_t oh = 0; oh < OH; ++oh)
+        for (dim_t ow = 0; ow < OW; ++ow) {
+            const dim_t id = od * KSD - padFront + kd * KDD;
+            const dim_t ih = oh * KSH - padT + kh * KDH;
+            const dim_t iw = ow * KSW - padL + kw * KDW;
             if (id < 0 || id >= ID || ih < 0 || ih >= IH || iw < 0 || iw >= IW)
                 continue;
-            const ptrdiff_t diff_dst_off = mb * diff_dst_mb_stride
+            const dim_t diff_dst_off = mb * diff_dst_mb_stride
                     + od * diff_dst_od_stride + oh * diff_dst_oh_stride
                     + ow * diff_dst_ow_stride;
-            const ptrdiff_t src_off = mb * src_mb_stride + id * src_id_stride
+            const dim_t src_off = mb * src_mb_stride + id * src_id_stride
                     + ih * src_ih_stride + iw * src_iw_stride;
             d += (acc_data_t)diff_dst_loc[diff_dst_off] * src_loc[src_off];
         }
     };
 
-    auto ker_bias = [=](acc_data_t &d, int g, int oc) {
-        for (int mb = 0; mb < MB; ++mb)
-        for (int od = 0; od < OD; ++od)
-        for (int oh = 0; oh < OH; ++oh)
-        for (int ow = 0; ow < OW; ++ow) {
-            if (ndims == 5)
-                d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, od, oh,
-                     ow)];
-            else if (ndims == 4)
-                d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, oh,
-                     ow)];
-            else if (ndims == 3)
-                d += (acc_data_t)diff_dst[diff_dst_d.off(mb, g*OC + oc, ow)];
-            else
-                assert(false);
+    auto ker_bias = [=](acc_data_t &d, dim_t g, dim_t oc) {
+        for_(dim_t mb = 0; mb < MB; ++mb)
+        for_(dim_t od = 0; od < OD; ++od)
+        for_(dim_t oh = 0; oh < OH; ++oh)
+        for (dim_t ow = 0; ow < OW; ++ow) {
+            const auto diff_dst_off = get_data_off(
+                    diff_dst_d, ndims, mb, g * OC + oc, od, oh, ow);
+            d += (acc_data_t)diff_dst[diff_dst_off];
         }
     };
 
-    parallel_nd(G, OC, [&](int g, int oc) {
+    parallel_nd(G, OC, [&](dim_t g, dim_t oc) {
         if (diff_bias) {
             // XXX: loss of precision when bias is a float...
             acc_data_t db = 0;
             ker_bias(db, g, oc);
-            diff_bias[diff_bias_d.off(g*OC+oc)]
-                = saturate<diff_wei_data_t>(db);
+            if (is_int_conv)
+                diff_bias[diff_bias_d.off(g * OC + oc)]
+                        = saturate_and_round<diff_wei_data_t>(db);
+            else
+                diff_bias[diff_bias_d.off(g * OC + oc)]
+                        = saturate<diff_wei_data_t>(db);
         }
 
-        for (int ic = 0; ic < IC; ++ic)
-        for (int kd = 0; kd < KD; ++kd)
-        for (int kh = 0; kh < KH; ++kh)
-        for (int kw = 0; kw < KW; ++kw) {
+        for_(dim_t ic = 0; ic < IC; ++ic)
+        for_(dim_t kd = 0; kd < KD; ++kd)
+        for_(dim_t kh = 0; kh < KH; ++kh)
+        for (dim_t kw = 0; kw < KW; ++kw) {
             acc_data_t dw = 0;
             if (diff_dst_d.is_plain() && src_d.is_plain())
                 ker_plain(dw, g, oc, ic, kd, kh, kw);
             else
                 ker(dw, g, oc, ic, kd, kh, kw);
 
-            if (ndims == 5) {
-                auto idx = with_groups
-                    ? diff_weights_d.off(g, oc, ic, kd, kh, kw)
-                    : diff_weights_d.off(oc, ic, kd, kh, kw);
-                    diff_weights[idx] = saturate<diff_wei_data_t>(dw);
-            } else if (ndims == 4) {
-                auto idx = with_groups
-                    ? diff_weights_d.off(g, oc, ic, kh, kw)
-                    : diff_weights_d.off(oc, ic, kh, kw);
-                    diff_weights[idx] = saturate<diff_wei_data_t>(dw);
-            } else if (ndims == 3) {
-                auto idx = with_groups
-                    ? diff_weights_d.off(g, oc, ic, kw)
-                    : diff_weights_d.off(oc, ic, kw);
-                    diff_weights[idx] = saturate<diff_wei_data_t>(dw);
-            } else {
-                 assert(false);
-            }
+            dim_t idx = get_weights_off(
+                    diff_weights_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
+            if (is_int_conv)
+                diff_weights[idx] = saturate_and_round<diff_wei_data_t>(dw);
+            else
+                diff_weights[idx] = saturate<diff_wei_data_t>(dw);
         }
     });
+    return status::success;
 }
 
 using namespace data_type;
 
 template struct ref_convolution_fwd_t<f32>;
-template struct ref_convolution_fwd_t<s16, s16, s32, s32>;
+template struct ref_convolution_fwd_t<bf16, bf16, bf16, f32>;
+template struct ref_convolution_fwd_t<bf16, bf16, f32, f32>;
 
 template struct ref_convolution_fwd_t<u8, s8, f32, s32>;
 template struct ref_convolution_fwd_t<u8, s8, s32, s32>;
 template struct ref_convolution_fwd_t<u8, s8, s8, s32>;
 template struct ref_convolution_fwd_t<u8, s8, u8, s32>;
+template struct ref_convolution_fwd_t<s8, s8, f32, s32>;
+template struct ref_convolution_fwd_t<s8, s8, s32, s32>;
+template struct ref_convolution_fwd_t<s8, s8, s8, s32>;
+template struct ref_convolution_fwd_t<s8, s8, u8, s32>;
 
 template struct ref_convolution_bwd_data_t<f32, f32, f32, f32>;
-template struct ref_convolution_bwd_data_t<s32, s16, s16, s32>;
+template struct ref_convolution_bwd_data_t<f32, bf16, bf16, f32>;
+template struct ref_convolution_bwd_data_t<bf16, bf16, bf16, f32>;
 
 template struct ref_convolution_bwd_data_t<f32, s8, u8, s32>;
 template struct ref_convolution_bwd_data_t<s32, s8, u8, s32>;
 template struct ref_convolution_bwd_data_t<s8, s8, u8, s32>;
 template struct ref_convolution_bwd_data_t<u8, s8, u8, s32>;
+template struct ref_convolution_bwd_data_t<f32, s8, s8, s32>;
+template struct ref_convolution_bwd_data_t<s32, s8, s8, s32>;
+template struct ref_convolution_bwd_data_t<s8, s8, s8, s32>;
+template struct ref_convolution_bwd_data_t<u8, s8, s8, s32>;
 
 template struct ref_convolution_bwd_weights_t<f32, f32, f32, f32>;
-template struct ref_convolution_bwd_weights_t<s16, s32, s16, s32>;
+template struct ref_convolution_bwd_weights_t<bf16, bf16, bf16, f32>;
+template struct ref_convolution_bwd_weights_t<bf16, f32, bf16, f32>;
 
-}
-}
-}
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl
 
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s
+// vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s

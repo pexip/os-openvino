@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2018 Intel Corporation
+* Copyright 2017-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,80 +14,115 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "mkldnn_debug.hpp"
-#include "reorder/reorder.hpp"
+#include "dnnl_debug.hpp"
 
-#define DPRINT(...) do { \
-    int l = snprintf(buffer, rem_len, __VA_ARGS__); \
-    buffer += l; rem_len -= l; \
-} while(0)
+#include "reorder/reorder.hpp"
 
 namespace reorder {
 
 alg_t str2alg(const char *str) {
-    if (!strcasecmp("bootstrap", str))
-        return ALG_BOOT;
+    if (!strcasecmp("bootstrap", str)) return ALG_BOOT;
+    if (!strcasecmp("reference", str)) return ALG_REF;
+    assert(!"unknown algorithm");
     return ALG_REF;
 }
 
 const char *alg2str(alg_t alg) {
     switch (alg) {
-    case ALG_REF: return "";
-    case ALG_BOOT: return "bootstrap";
-    default: assert(!"Invalid algorithm"); return "";
+        case ALG_REF: return "reference";
+        case ALG_BOOT: return "bootstrap";
+        default: assert(!"unknown algorithm"); return "unknown algorithm";
     }
 }
 
-dims_t str2dims(const char *str) {
-    dims_t dims;
-    do {
-        int dim, len;
-        int scan = sscanf(str, "%d%n", &dim, &len);
-        SAFE_V(scan == 1 ? OK : FAIL);
-        dims.push_back(dim);
-        str += len;
-        SAFE_V(*str == 'x' || *str == '\0' ? OK : FAIL);
-    } while (*str++ != '\0');
-    return dims;
+flag_t str2flag(const char *str) {
+    if (!strcasecmp("none", str))
+        return FLAG_NONE;
+    else if (!strcasecmp("conv_s8s8", str))
+        return FLAG_CONV_S8S8;
+    else if (!strcasecmp("gconv_s8s8", str))
+        return FLAG_GCONV_S8S8;
+    assert(!"unknown flag");
+    return FLAG_NONE;
 }
 
-void dims2str(const dims_t &dims, char *buffer) {
-    int rem_len = max_dims_len;
-    for (size_t d = 0; d < dims.size() - 1; ++d)
-        DPRINT("%tdx", dims[d]);
-    DPRINT("%td", dims[dims.size() - 1]);
-}
-
-void prb2str(const prb_t *p, const res_t *res, char *buffer) {
-    char dims_buf[max_dims_len] = {0};
-    dims2str(p->reorder.dims, dims_buf);
-
-    constexpr int max_alg_len = 20;
-    char alg_buf[max_alg_len] = {0};
-    const char *algstr = alg2str(p->alg);
-    if (algstr && *algstr) {
-        int len = snprintf(alg_buf, max_alg_len, "--alg=\"");
-        SAFE_V(len >= 0 ? OK : FAIL);
-        snprintf(alg_buf + len, max_alg_len - len, "%s", algstr);
-        len = (int)strnlen(alg_buf, max_alg_len);
-        snprintf(alg_buf + len, max_alg_len - len, "\" ");
+const char *flag2str(flag_t flag) {
+    switch (flag) {
+        case FLAG_NONE: return "none";
+        case FLAG_CONV_S8S8: return "conv_s8s8";
+        case FLAG_GCONV_S8S8: return "gconv_s8s8";
+        default: assert(!"Invalid flag"); return "none";
     }
+}
 
-    char attr_buf[max_attr_len] = {0};
-    bool is_attr_def = p->attr.is_def();
-    if (!is_attr_def) {
-        int len = snprintf(attr_buf, max_attr_len, "--attr=\"");
-        SAFE_V(len >= 0 ? OK : FAIL);
-        attr2str(&p->attr, attr_buf + len);
-        len = (int)strnlen(attr_buf, max_attr_len);
-        snprintf(attr_buf + len, max_attr_len - len, "\" ");
+cross_engine_t str2cross_engine(const char *str) {
+    if (!strcasecmp("none", str)) return NONE;
+    if (!strcasecmp("cpu2gpu", str)) return CPU2GPU;
+    if (!strcasecmp("gpu2cpu", str)) return GPU2CPU;
+    assert(!"unknown cross engine");
+    return NONE;
+}
+
+const char *cross_engine2str(cross_engine_t cross_engine) {
+    switch (cross_engine) {
+        case NONE: return "none";
+        case CPU2GPU: return "cpu2gpu";
+        case GPU2CPU: return "gpu2cpu";
+        default: assert(!"unknown cross engine"); return "unknown cross engine";
     }
-
-    int rem_len = max_prb_len;
-    DPRINT("--idt=%s --odt=%s --ifmt=%s --ofmt=%s %s%s%s",
-            dt2str(cfg2dt(p->conf_in)), dt2str(cfg2dt(p->conf_out)),
-            fmt2str(p->reorder.fmt_in), fmt2str(p->reorder.fmt_out),
-            alg_buf, attr_buf, dims_buf);
 }
 
+float *prb_t::generate_oscales() {
+    const attr_t::scale_t &oscale = this->attr.oscale;
+    const int mask = attr_t::get_default_mask(oscale.policy);
+
+    int64_t uniq_scales = 1;
+    for (int d = 0; d < this->ndims; ++d)
+        if (mask & (1 << d)) uniq_scales *= this->reorder.dims[d];
+
+    float *scales = (float *)zmalloc(sizeof(float) * uniq_scales, 64);
+    SAFE_V(scales != nullptr ? OK : FAIL);
+    for (int d = 0; d < uniq_scales; ++d)
+        scales[d] = oscale.scale;
+    if (uniq_scales > 1) scales[uniq_scales - 1] /= 2.f;
+    return scales;
 }
+
+int32_t *prb_t::generate_zero_points(int arg) {
+    const attr_t::zero_points_t &zero_points = this->attr.zero_points;
+    if (zero_points.is_def(arg)) return nullptr;
+
+    const auto &e = zero_points.get(arg);
+    assert(e.policy == policy_t::COMMON);
+
+    int32_t *zp = (int32_t *)zmalloc(sizeof(int32_t), 4);
+    SAFE_V(zp != nullptr ? OK : FAIL);
+    zp[0] = e.value;
+    return zp;
+}
+
+std::ostream &operator<<(std::ostream &s, const prb_t &prb) {
+    dump_global_params(s);
+    settings_t def;
+
+    s << "--sdt=" << cfg2dt(prb.conf_in) << " ";
+    s << "--ddt=" << cfg2dt(prb.conf_out) << " ";
+    s << "--stag=" << prb.reorder.tag_in << " ";
+    s << "--dtag=" << prb.reorder.tag_out << " ";
+
+    if (canonical || prb.alg != def.alg[0])
+        s << "--alg=" << alg2str(prb.alg) << " ";
+    if (canonical || prb.oflag != def.oflag[0])
+        s << "--oflag=" << flag2str(prb.oflag) << " ";
+    if (canonical || prb.cross_engine != def.cross_engine[0])
+        s << "--cross-engine=" << cross_engine2str(prb.cross_engine) << " ";
+    if (canonical || prb.runtime_dim_mask != def.runtime_dim_mask[0])
+        s << "--runtime-dim-mask=" << prb.runtime_dim_mask << " ";
+
+    s << prb.attr;
+    s << prb.reorder.dims;
+
+    return s;
+}
+
+} // namespace reorder

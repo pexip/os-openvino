@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2018 Intel Corporation
+* Copyright 2016-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,39 +16,51 @@
 
 #include <assert.h>
 #include <math.h>
-#include <common/primitive_attr.hpp>
 
-#include "c_types_map.hpp"
-#include "math_utils.hpp"
-#include "mkldnn_thread.hpp"
-#include "nstl.hpp"
-#include "type_helpers.hpp"
-#include "bfloat16_utils.hpp"
-#include "ref_pooling.hpp"
+#include "common/c_types_map.hpp"
+#include "common/dnnl_thread.hpp"
+#include "common/nstl.hpp"
+#include "common/type_helpers.hpp"
 
-namespace mkldnn {
+#include "cpu/simple_q10n.hpp"
+
+#include "cpu/ref_pooling.hpp"
+
+namespace dnnl {
 namespace impl {
 namespace cpu {
 
+static inline dim_t get_offset(
+        const memory_desc_wrapper &mdw, int n, int c, int d, int h, int w) {
+    switch (mdw.ndims()) {
+        case 3: return mdw.off(n, c, w);
+        case 4: return mdw.off(n, c, h, w);
+        case 5: return mdw.off(n, c, d, h, w);
+        default: assert(!"Invalid tensor dimension in pooling");
+    }
+    return 0;
+}
+
 using namespace nstl;
-using namespace bf16_cvt_utils;
 
 template <data_type_t src_type, data_type_t dst_type, data_type_t acc_type>
-void ref_pooling_fwd_t<src_type, dst_type, acc_type>::execute_forward() const {
-    using namespace alg_kind;
-    using namespace prop_kind;
+void ref_pooling_fwd_t<src_type, dst_type, acc_type>::execute_forward(
+        const exec_ctx_t &ctx) const {
+
+    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_MEM(dst_data_t *, DNNL_ARG_DST);
+    auto ws = CTX_OUT_MEM(unsigned char *, DNNL_ARG_WORKSPACE);
+
+    auto MB = CTX_IN_BATCH(DNNL_ARG_SRC);
+
+    const memory_desc_wrapper src_d(pd()->src_md());
+    const memory_desc_wrapper dst_d(pd()->dst_md());
+    const memory_desc_wrapper ws_d(pd()->workspace_md());
 
     auto alg = pd()->desc()->alg_kind;
-
-    auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
-    auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
-    auto ws = alg == pooling_max && pd()->desc()->prop_kind == forward_training
-        ? reinterpret_cast<unsigned char *>(this->memory(1)) : nullptr;
-
-    const memory_desc_wrapper src_d(pd()->src_pd());
-    const memory_desc_wrapper dst_d(pd()->dst_pd());
-    const memory_desc_wrapper ws_d(pd()->workspace_pd());
     const data_type_t ws_dt = ws ? ws_d.data_type() : data_type::undef;
+
+    if (ws) assert(ws_dt == data_type::u8 || ws_dt == data_type::s32);
 
     const int ID = pd()->ID();
     const int IH = pd()->IH();
@@ -62,76 +74,72 @@ void ref_pooling_fwd_t<src_type, dst_type, acc_type>::execute_forward() const {
     const int padF = pd()->padFront();
     const int padT = pd()->padT();
     const int padL = pd()->padL();
+    const int DD = pd()->DD();
+    const int DH = pd()->DH();
+    const int DW = pd()->DW();
     const int padB = pd()->padB();
     const int padR = pd()->padR();
     const int padBack = pd()->padBack();
 
-    const int MB = pd()->MB();
-    const int OC = pd()->C();
-    const int OD = pd()->OD();
-    const int OH = pd()->OH();
-    const int OW = pd()->OW();
-
-    const bool is_3d = pd()->desc()->src_desc.ndims == 5;
-
     auto set_ws = [=](int mb, int oc, int od, int oh, int ow, int value) {
-        // value = -1 means that pool window is placed outside of source domain
-        // for current {od, oh, ow} point
         if (ws) {
-            assert(ws_dt == data_type::u8 || ws_dt == data_type::s32);
-            size_t offset = is_3d
-                ? ws_d.off(mb, oc, od, oh, ow) : ws_d.off(mb, oc, oh, ow);
+            const auto off = get_offset(ws_d, mb, oc, od, oh, ow);
             if (ws_dt == data_type::u8) {
-                const int u8_max = numeric_limits<
-                    typename prec_traits<data_type::u8>::type>::max();
-                if (value == -1)
-                    value = u8_max;
-                assert(0 <= value && value <= u8_max);
-                ws[offset] = value;
+                assert(0 <= value
+                        && value <= numeric_limits<typename prec_traits<
+                                        data_type::u8>::type>::max());
+                ws[off] = value;
             } else
-                reinterpret_cast<int *>(ws)[offset] = value;
+                reinterpret_cast<int *>(ws)[off] = value;
         }
     };
 
-    auto ker_max = [=](dst_data_t *d, int mb, int oc, int od, int oh, int ow) {
+    auto ker_max = [=](float &d, int mb, int oc, int od, int oh, int ow) {
         bool is_initialized = false;
-        int current_pool_size = 0;
         for (int kd = 0; kd < KD; ++kd) {
+            const int id = od * SD - padF + kd * (DD + 1);
+            if (id < 0 || id >= ID) continue;
             for (int kh = 0; kh < KH; ++kh) {
+                const int ih = oh * SH - padT + kh * (DH + 1);
+                if (ih < 0 || ih >= IH) continue;
                 for (int kw = 0; kw < KW; ++kw) {
-                    const int id = od * SD - padF + kd;
-                    const int ih = oh * SH - padT + kh;
-                    const int iw = ow * SW - padL + kw;
-
-                    if (id < 0 || id >= ID) continue;
-                    if (ih < 0 || ih >= IH) continue;
+                    const int iw = ow * SW - padL + kw * (DW + 1);
                     if (iw < 0 || iw >= IW) continue;
 
-                    const auto offset = is_3d
-                        ? src_d.off(mb, oc, id, ih, iw)
-                        : src_d.off(mb, oc, ih, iw);
-                    const auto s = src[offset];
+                    const auto off = get_offset(src_d, mb, oc, id, ih, iw);
+                    auto s = src[off];
                     if (!is_initialized) {
-                        d[0] = s;
+                        d = s;
                         set_ws(mb, oc, od, oh, ow, kd * KH * KW + kh*KW + kw);
                         is_initialized = true;
                     } else {
-                        if (s > d[0]) {
-                            d[0] = s;
+                        if (s > d) {
+                            d = s;
                             set_ws(mb, oc, od, oh, ow, kd * KH * KW + kh * KW + kw);
                         }
                     }
-                    current_pool_size++;
+                }
+            }
+        }
+    };
+
+    auto ker_avg = [=](float &d, int mb, int oc, int od, int oh, int ow) {
+        for (int kd = 0; kd < KD; ++kd) {
+            const int id = od * SD - padF + kd * (DD + 1);
+            if (id < 0 || id >= ID) continue;
+            for (int kh = 0; kh < KH; ++kh) {
+                const int ih = oh * SH - padT + kh * (DH + 1);
+                if (ih < 0 || ih >= IH) continue;
+                for (int kw = 0; kw < KW; ++kw) {
+                    const int iw = ow * SW - padL + kw * (DW + 1);
+                    if (iw < 0 || iw >= IW) continue;
+
+                    const auto off = get_offset(src_d, mb, oc, id, ih, iw);
+                    d += src[off];
                 }
             }
         }
 
-        // corner case: pool window is outside of real input domain
-        // for this point.
-        if (current_pool_size == 0)
-            set_ws(mb, oc, 1, oh, ow, -1);
-    };
-    auto ker_avg = [=](dst_data_t *d, int mb, int oc, int od, int oh, int ow) {
         auto id_start = od*SD - padF;
         auto ih_start = oh*SH - padT;
         auto iw_start = ow*SW - padL;
@@ -149,26 +157,30 @@ void ref_pooling_fwd_t<src_type, dst_type, acc_type>::execute_forward() const {
         ih_end = nstl::min(ih_end, IH);
         iw_end = nstl::min(iw_end, IW);
 
-        if (alg == pooling_avg_exclude_padding)
-            num_summands = (ih_end - ih_start)*(iw_end - iw_start)*(id_end - id_start);
+        if (alg == alg_kind::pooling_avg_exclude_padding) {
+            auto id_start_excluded
+                    = id_start < 0 ? (0 - id_start - 1) / (DD + 1) + 1 : 0;
+            auto ih_start_excluded
+                    = ih_start < 0 ? (0 - ih_start - 1) / (DH + 1) + 1 : 0;
+            auto iw_start_excluded
+                    = iw_start < 0 ? (0 - iw_start - 1) / (DW + 1) + 1 : 0;
+            auto id_end_excluded
+                    = id_end > ID ? (id_end - ID - 1) / (DD + 1) + 1 : 0;
+            auto ih_end_excluded
+                    = ih_end > IH ? (ih_end - IH - 1) / (DH + 1) + 1 : 0;
+            auto iw_end_excluded
+                    = iw_end > IW ? (iw_end - IW - 1) / (DW + 1) + 1 : 0;
+
+            num_summands = (KD - id_start_excluded - id_end_excluded)
+                           * (KH - ih_start_excluded - ih_end_excluded)
+                           * (KW - iw_start_excluded - iw_end_excluded);
+        }
         if (num_summands == 0) return;
 
-        acc_data_t dst = 0;
-        for (int id = id_start; id < id_end; ++id) {
-            for (int ih = ih_start; ih < ih_end; ++ih) {
-                for (int iw = iw_start; iw < iw_end; ++iw) {
-                    const auto offset = is_3d
-                        ? src_d.off(mb, oc, id, ih, iw)
-                        : src_d.off(mb, oc, ih, iw);
-                    dst += src[offset];
-                }
-            }
-        }
-
-        float dst_f = (float)dst / num_summands;
+        d /= num_summands;
 
         const auto &p = pd()->attr()->post_ops_;
-        for (int i = 0; i < p.len_; i++) {
+        for (int i = 0; i < p.len(); i++) {
             auto &post_op = p.entry_[i];
             if (post_op.is_quantization()) {
                 auto quant = post_op.quantization;
@@ -179,214 +191,54 @@ void ref_pooling_fwd_t<src_type, dst_type, acc_type>::execute_forward() const {
                 float osc = quant.output_scale_data->scales_[quant.output_scale_data->count_ == 1 ? 0 : oc];
                 float osh = quant.output_shift_data->shifts_[quant.output_shift_data->count_ == 1 ? 0 : oc];
 
-                dst_f = nstl::min(ch, nstl::max(cl, dst_f));
-                dst_f = dst_f * isc + ish;
-                dst_f = roundf(dst_f);
-                dst_f = dst_f * osc + osh;
+                d = nstl::min(ch, nstl::max(cl, d));
+                d = d * isc + ish;
+                d = roundf(d);
+                d = d * osc + osh;
             }
         }
-
-        d[0] = math::out_round<dst_data_t>(dst_f);
     };
 
-    if (alg == pooling_max) {
-        parallel_nd(MB, OC, OD, OH, OW,
-            [&](int mb, int oc, int od, int oh, int ow) {
-            dst_data_t *d = is_3d
-                ? &dst[dst_d.off(mb, oc, od, oh, ow)]
-                : &dst[dst_d.off(mb, oc, oh, ow)];
-                d[0] = (dst_data_t)0;
-                set_ws(mb, oc, od, oh, ow, 0);
-                ker_max(d, mb, oc, od, oh, ow);
-        });
-    } else {
-        parallel_nd(MB, OC, OD, OH, OW,
-            [&](int mb, int oc, int od, int oh, int ow) {
-                dst_data_t *d = is_3d
-                ? &dst[dst_d.off(mb, oc, od, oh, ow)]
-                : &dst[dst_d.off(mb, oc, oh, ow)];
-            d[0] = (dst_data_t)0;
-            ker_avg(d, mb, oc, od, oh, ow);
-        });
-    }
-}
-
-template <>
-void ref_pooling_fwd_t<data_type::bf16, data_type::bf16, data_type::f32>::execute_forward() const {
-    using namespace alg_kind;
-    using namespace prop_kind;
-
-    auto alg = pd()->desc()->alg_kind;
-
-    auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
-    auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
-    auto ws = alg == pooling_max && pd()->desc()->prop_kind == forward_training
-        ? reinterpret_cast<unsigned char *>(this->memory(1)) : nullptr;
-
-    const memory_desc_wrapper src_d(pd()->src_pd());
-    const memory_desc_wrapper dst_d(pd()->dst_pd());
-    const memory_desc_wrapper ws_d(pd()->workspace_pd());
-    const data_type_t ws_dt = ws ? ws_d.data_type() : data_type::undef;
-
-    const int ID = pd()->ID();
-    const int IH = pd()->IH();
-    const int IW = pd()->IW();
-    const int KD = pd()->KD();
-    const int KH = pd()->KH();
-    const int KW = pd()->KW();
-    const int SD = pd()->KSD();
-    const int SH = pd()->KSH();
-    const int SW = pd()->KSW();
-    const int padF = pd()->padFront();
-    const int padT = pd()->padT();
-    const int padL = pd()->padL();
-    const int MB = pd()->MB();
     const int OC = pd()->C();
     const int OD = pd()->OD();
     const int OH = pd()->OH();
     const int OW = pd()->OW();
-    const int padB = pd()->padB();
-    const int padR = pd()->padR();
-    const int padBack = pd()->padBack();
 
-    const bool is_3d = pd()->desc()->src_desc.ndims == 5;
-
-    auto set_ws = [=](int mb, int oc, int od, int oh, int ow, int value) {
-        // value = -1 means that pool window is placed outside of source domain
-        // for current {od, oh, ow} point
-        if (ws) {
-            assert(ws_dt == data_type::u8 || ws_dt == data_type::s32);
-            size_t offset = is_3d
-                ? ws_d.off(mb, oc, od, oh, ow) : ws_d.off(mb, oc, oh, ow);
-            if (ws_dt == data_type::u8) {
-                const int u8_max = numeric_limits<
-                    typename prec_traits<data_type::u8>::type>::max();
-                if (value == -1)
-                    value = u8_max;
-                assert(0 <= value && value <= u8_max);
-                ws[offset] = value;
-            } else
-                reinterpret_cast<int *>(ws)[offset] = value;
-        }
-    };
-
-    auto ker_max = [=](mkldnn_bfloat16_t *d,
-            int mb, int oc, int od, int oh, int ow) {
-        bool is_initialized = false;
-        int current_pool_size = 0;
-        float d_max = cvt_bfloat16_to_float(d[0]);
-        for (int kd = 0; kd < KD; ++kd) {
-            for (int kh = 0; kh < KH; ++kh) {
-                for (int kw = 0; kw < KW; ++kw) {
-                    const int id = od * SD - padF + kd;
-                    const int ih = oh * SH - padT + kh;
-                    const int iw = ow * SW - padL + kw;
-
-                    if (id < 0 || id >= ID) continue;
-                    if (ih < 0 || ih >= IH) continue;
-                    if (iw < 0 || iw >= IW) continue;
-
-                    const auto offset = is_3d
-                        ? src_d.off(mb, oc, id, ih, iw)
-                        : src_d.off(mb, oc, ih, iw);
-                    float s = cvt_bfloat16_to_float(src[offset]);
-                    if (!is_initialized) {
-                        d_max = s;
-                        set_ws(mb, oc, od, oh, ow, kd * KH * KW + kh*KW + kw);
-                        is_initialized = true;
-                    } else {
-                        if (s > d_max) {
-                            d_max = s;
-                            set_ws(mb, oc, od, oh, ow, kd * KH * KW + kh*KW + kw);
-                        }
-                    }
-                    current_pool_size++;
-                }
-            }
-        }
-
-        d[0] = cvt_float_to_bfloat16(d_max);
-
-        // corner case: pool window is outside of real input domain
-        // for this point.
-        if (current_pool_size == 0)
-            set_ws(mb, oc, 1, oh, ow, -1);
-    };
-
-    auto ker_avg = [=](mkldnn_bfloat16_t *d,
-            int mb, int oc, int od, int oh, int ow) {
-        auto id_start = od*SD - padF;
-        auto ih_start = oh*SH - padT;
-        auto iw_start = ow*SW - padL;
-        auto id_end = nstl::min(od*SD - padF + KD, ID + padBack);
-        auto ih_end = nstl::min(oh*SH - padT + KH, IH + padB);
-        auto iw_end = nstl::min(ow*SW - padL + KW, IW + padR);
-
-        // case alg == pooling_avg_include_padding
-        auto num_summands = (ih_end - ih_start)*(iw_end - iw_start)*(id_end - id_start);
-
-        id_start = nstl::max(id_start, 0);
-        ih_start = nstl::max(ih_start, 0);
-        iw_start = nstl::max(iw_start, 0);
-        id_end = nstl::min(id_end, ID);
-        ih_end = nstl::min(ih_end, IH);
-        iw_end = nstl::min(iw_end, IW);
-
-        if (alg == pooling_avg_exclude_padding)
-            num_summands = (ih_end - ih_start)*(iw_end - iw_start)*(id_end - id_start);
-        if (num_summands == 0) return;
-
-        float dst = 0;
-        for (int id = id_start; id < id_end; ++id) {
-            for (int ih = ih_start; ih < ih_end; ++ih) {
-                for (int iw = iw_start; iw < iw_end; ++iw) {
-                    const auto offset = is_3d
-                        ? src_d.off(mb, oc, id, ih, iw)
-                        : src_d.off(mb, oc, ih, iw);
-                    const auto s = cvt_bfloat16_to_float(src[offset]);
-                    dst += s;
-                }
-            }
-        }
-
-        dst = math::out_round<float>((float)dst / num_summands);
-        d[0] = cvt_float_to_bfloat16(dst);
-    };
-
-    if (alg == pooling_max) {
+    if (alg == alg_kind::pooling_max) {
         parallel_nd(MB, OC, OD, OH, OW,
-            [&](int mb, int oc, int od, int oh, int ow) {
-            dst_data_t *d = is_3d
-                ? &dst[dst_d.off(mb, oc, od, oh, ow)]
-                : &dst[dst_d.off(mb, oc, oh, ow)];
-                d[0] = approx_bfloat16_lowest();
-                set_ws(mb, oc, od, oh, ow, 0);
-                ker_max(d, mb, oc, od, oh, ow);
-        });
+                [&](int mb, int oc, int od, int oh, int ow) {
+                    auto data_p_off = get_offset(dst_d, mb, oc, od, oh, ow);
+                    float res = 0.f;
+                    set_ws(mb, oc, od, oh, ow, 0);
+                    ker_max(res, mb, oc, od, oh, ow);
+
+                    dst[data_p_off] = cpu::saturate_and_round<dst_data_t >(res);
+                });
     } else {
         parallel_nd(MB, OC, OD, OH, OW,
-            [&](int mb, int oc, int od, int oh, int ow) {
-            dst_data_t *d = is_3d
-                ? &dst[dst_d.off(mb, oc, od, oh, ow)]
-                : &dst[dst_d.off(mb, oc, oh, ow)];
-            d[0] = 0;
-            ker_avg(d, mb, oc, od, oh, ow);
-        });
+                [&](int mb, int oc, int od, int oh, int ow) {
+                    auto data_p_off = get_offset(dst_d, mb, oc, od, oh, ow);
+                    float res = 0.f;
+                    ker_avg(res, mb, oc, od, oh, ow);
+
+                    dst[data_p_off] = cpu::saturate_and_round<dst_data_t >(res);
+                });
     }
 }
 
 template <data_type_t data_type>
-void ref_pooling_bwd_t<data_type>::execute_backward() const {
-    using namespace alg_kind;
+void ref_pooling_bwd_t<data_type>::execute_backward(
+        const exec_ctx_t &ctx) const {
 
-    auto diff_dst = reinterpret_cast<const data_t *>(this->input_memory(0));
-    auto ws = pd()->desc()->alg_kind != alg_kind::pooling_max ? nullptr
-        : reinterpret_cast<const unsigned char *>(this->input_memory(1));
-    auto diff_src = reinterpret_cast<data_t *>(this->memory(0));
+    auto diff_dst = CTX_IN_MEM(const data_t *, DNNL_ARG_DIFF_DST);
+    auto ws = CTX_IN_MEM(const unsigned char *, DNNL_ARG_WORKSPACE);
+    auto diff_src = CTX_OUT_MEM(data_t *, DNNL_ARG_DIFF_SRC);
 
-    const memory_desc_wrapper diff_dst_d(pd()->diff_dst_pd());
-    const memory_desc_wrapper ws_d(pd()->workspace_pd());
-    const memory_desc_wrapper diff_src_d(pd()->diff_src_pd());
+    const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
+    const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
+    const memory_desc_wrapper ws_d(pd()->workspace_md());
+
+    const auto alg = pd()->desc()->alg_kind;
 
     const int ID = pd()->ID();
     const int IH = pd()->IH();
@@ -400,286 +252,134 @@ void ref_pooling_bwd_t<data_type>::execute_backward() const {
     const int padF = pd()->padFront();
     const int padT = pd()->padT();
     const int padL = pd()->padL();
-    const int MB = pd()->MB();
-    const int OC = pd()->C();
-    const int OD = pd()->OD();
-    const int OH = pd()->OH();
-    const int OW = pd()->OW();
+    const int DD = pd()->DD();
+    const int DH = pd()->DH();
+    const int DW = pd()->DW();
 
-    const bool is_3d = pd()->desc()->diff_src_desc.ndims == 5;
-
-    auto alg = pd()->desc()->alg_kind;
-
-    auto apply_offset = [=](int index, int offset) {
-        return (index > offset) ? index - offset : 0;
-    };
-
-    auto ker_zero = [=](int _mb, int _oc) {
-        for (int id = 0; id < ID; ++id) {
-            for (int ih = 0; ih < IH; ++ih) {
-                for (int iw = 0; iw < IW; ++iw) {
-                    const auto offset = is_3d
-                        ? diff_src_d.off(_mb, _oc, id, ih, iw)
-                        : diff_src_d.off(_mb, _oc, ih, iw);
-                    diff_src[offset] =
-                        data_type_t(0);
-                }
-            }
+    auto ker_zero = [=](int mb, int oc) {
+        for_(int id = 0; id < ID; ++id)
+        for_(int ih = 0; ih < IH; ++ih)
+        for (int iw = 0; iw < IW; ++iw) {
+            const auto off = get_offset(diff_src_d, mb, oc, id, ih, iw);
+            diff_src[off] = data_type_t(0);
         }
     };
 
-    auto ker_max = [=](const data_t *d, int mb, int oc, int od, int oh,
-            int ow) {
-        const size_t ws_off = is_3d
-            ? ws_d.off(mb, oc, od, oh, ow)
-            : ws_d.off(mb, oc, oh, ow);
-        const int index = ws_d.data_type() == data_type::u8
-            ? (int)ws[ws_off] : ((int *)ws)[ws_off];
+    auto ker_max
+            = [=](const data_t *d, int mb, int oc, int od, int oh, int ow) {
+                  const auto ws_off = get_offset(ws_d, mb, oc, od, oh, ow);
+                  const int index = ws_d.data_type() == data_type::u8
+                          ? (int)ws[ws_off]
+                          : ((int *)ws)[ws_off];
+                  const int kd = (index / KW) / KH;
+                  const int kh = (index / KW) % KH;
+                  const int kw = index % KW;
+                  const int id = od * SD - padF + kd * (DD + 1);
+                  const int ih = oh * SH - padT + kh * (DH + 1);
+                  const int iw = ow * SW - padL + kw * (DW + 1);
 
-        const int invalid_index_value = ws_d.data_type() == data_type::u8
-            ? numeric_limits<typename prec_traits<data_type::u8>::type>::max()
-            : -1;
-        if (index == invalid_index_value)
-           return; // corner case: pool window is outside of real input domain
-                   // for this point, do nothing
+                  // If padding area could fit the kernel,
+                  // then input displacement would be out of bounds.
+                  // No need to back propagate there as padding is
+                  // virtual in pooling_max case.
+                  if (id < 0 || id >= ID) return;
+                  if (ih < 0 || ih >= IH) return;
+                  if (iw < 0 || iw >= IW) return;
 
-        const int kw = index % KW;
-        const int kh = is_3d
-            ? (index / KW) % KH
-            : index / KW;
-        const int kd = (index / KW) / KH;
-        const int id = od * SD - padF + kd;
-        const int ih = oh * SH - padT + kh;
-        const int iw = ow * SW - padL + kw;
-
-        // If padding area could fit the kernel,
-        // then input displacement would be out of bounds.
-        // No need to back propagate there as padding is
-        // virtual in pooling_max case.
-        if (id < 0 || id >= ID)
-            return;
-        if (ih < 0 || ih >= IH)
-            return;
-        if (iw < 0 || iw >= IW)
-            return;
-
-        const auto offset = is_3d
-            ? diff_src_d.off(mb, oc, id, ih, iw)
-            : diff_src_d.off(mb, oc, ih, iw);
-
-        diff_src[offset] += d[0];
-    };
+                  const auto off = get_offset(diff_src_d, mb, oc, id, ih, iw);
+                  diff_src[off] += d[0];
+              };
 
     auto ker_avg = [=](const data_t *d, int mb, int oc, int od, int oh,
-            int ow) {
-        auto id_start = apply_offset(od*SD, padF);
-        auto ih_start = apply_offset(oh*SH, padT);
-        auto iw_start = apply_offset(ow*SW, padL);
-        auto id_end = nstl::min(od*SD - padF + KD, ID);
-        auto ih_end = nstl::min(oh*SH - padT + KH, IH);
-        auto iw_end = nstl::min(ow*SW - padL + KW, IW);
+                           int ow) {
+        int num_summands;
+        if (alg == alg_kind::pooling_avg_include_padding)
+            num_summands = KW * KH * KD;
+        else {
+            auto id_start = od * SD - padF;
+            auto ih_start = oh * SH - padT;
+            auto iw_start = ow * SW - padL;
+            auto id_end = od * SD - padF + (KD - 1) * DD + KD;
+            auto ih_end = oh * SH - padT + (KH - 1) * DH + KH;
+            auto iw_end = ow * SW - padL + (KW - 1) * DW + KW;
 
-        auto num_summands = (alg == pooling_avg_include_padding)
-            ? KW * KH * KD
-            : (ih_end - ih_start)*(iw_end - iw_start)*(id_end - id_start);
-        assert(num_summands > 0);
+            auto id_start_excluded
+                    = id_start < 0 ? (0 - id_start - 1) / (DD + 1) + 1 : 0;
+            auto ih_start_excluded
+                    = ih_start < 0 ? (0 - ih_start - 1) / (DH + 1) + 1 : 0;
+            auto iw_start_excluded
+                    = iw_start < 0 ? (0 - iw_start - 1) / (DW + 1) + 1 : 0;
+            auto id_end_excluded
+                    = id_end > ID ? (id_end - ID - 1) / (DD + 1) + 1 : 0;
+            auto ih_end_excluded
+                    = ih_end > IH ? (ih_end - IH - 1) / (DH + 1) + 1 : 0;
+            auto iw_end_excluded
+                    = iw_end > IW ? (iw_end - IW - 1) / (DW + 1) + 1 : 0;
 
-        for (int id = id_start; id < id_end; ++id)
-        for (int ih = ih_start; ih < ih_end; ++ih)
-        for (int iw = iw_start; iw < iw_end; ++iw) {
-            const auto offset = is_3d
-                ? diff_src_d.off(mb, oc, id, ih, iw)
-                : diff_src_d.off(mb, oc, ih, iw);
-            diff_src[offset] += d[0] / num_summands;
+            num_summands = (KD - id_start_excluded - id_end_excluded)
+                    * (KH - ih_start_excluded - ih_end_excluded)
+                    * (KW - iw_start_excluded - iw_end_excluded);
+        }
+        for (int kd = 0; kd < KD; ++kd) {
+            const int id = od * SD - padF + kd * (DD + 1);
+            if (id < 0 || id >= ID) continue;
+            for (int kh = 0; kh < KH; ++kh) {
+                const int ih = oh * SH - padT + kh * (DH + 1);
+                if (ih < 0 || ih >= IH) continue;
+                for (int kw = 0; kw < KW; ++kw) {
+                    const int iw = ow * SW - padL + kw * (DW + 1);
+                    if (iw < 0 || iw >= IW) continue;
+
+                    const auto off = get_offset(diff_src_d, mb, oc, id, ih, iw);
+                    diff_src[off] += d[0] / num_summands;
+                }
+            }
         }
     };
 
-    if (pd()->desc()->alg_kind == alg_kind::pooling_max) {
-        parallel_nd(MB, OC, [&](int mb, int oc) {
-            ker_zero(mb, oc);
-            for (int od = 0; od < OD; ++od) {
-                for (int oh = 0; oh < OH; ++oh) {
-                    for (int ow = 0; ow < OW; ++ow) {
-                        const data_t *d = is_3d
-                            ? &diff_dst[diff_dst_d.off(mb, oc, od, oh, ow)]
-                            : &diff_dst[diff_dst_d.off(mb, oc, oh, ow)];
-                        ker_max(d, mb, oc, od, oh, ow);
-                    }
-                }
-            }
-        });
-    } else {
-        parallel_nd(MB, OC, [&](int mb, int oc) {
-            ker_zero(mb, oc);
-            for (int od = 0; od < OD; ++od) {
-                for (int oh = 0; oh < OH; ++oh) {
-                    for (int ow = 0; ow < OW; ++ow) {
-                        const data_t *d = is_3d
-                            ? &diff_dst[diff_dst_d.off(mb, oc, od, oh, ow)]
-                            : &diff_dst[diff_dst_d.off(mb, oc, oh, ow)];
-                        ker_avg(d, mb, oc, od, oh, ow);
-                    }
-                }
-            }
-        });
-    }
-}
-
-template <>
-void ref_pooling_bwd_t<data_type::bf16>::execute_backward() const {
-    using namespace alg_kind;
-
-    auto diff_dst = reinterpret_cast<const data_t *>(this->input_memory(0));
-    auto ws = pd()->desc()->alg_kind != alg_kind::pooling_max ? nullptr
-        : reinterpret_cast<const unsigned char *>(this->input_memory(1));
-    auto diff_src = reinterpret_cast<data_t *>(this->memory(0));
-
-    const memory_desc_wrapper diff_dst_d(pd()->diff_dst_pd());
-    const memory_desc_wrapper ws_d(pd()->workspace_pd());
-    const memory_desc_wrapper diff_src_d(pd()->diff_src_pd());
-
-    const int ID = pd()->ID();
-    const int IH = pd()->IH();
-    const int IW = pd()->IW();
-    const int KD = pd()->KD();
-    const int KH = pd()->KH();
-    const int KW = pd()->KW();
-    const int SD = pd()->KSD();
-    const int SH = pd()->KSH();
-    const int SW = pd()->KSW();
-    const int padF = pd()->padFront();
-    const int padT = pd()->padT();
-    const int padL = pd()->padL();
     const int MB = pd()->MB();
     const int OC = pd()->C();
     const int OD = pd()->OD();
     const int OH = pd()->OH();
     const int OW = pd()->OW();
 
-    const bool is_3d = pd()->desc()->diff_src_desc.ndims == 5;
+    int ow_start = max(0, utils::div_up(padL - ((KW - 1) * DW + KW) + 1, SW));
+    int ow_end = min(OW, 1 + (padL + IW - 1) / SW);
 
-    auto alg = pd()->desc()->alg_kind;
+    int oh_start = max(0, utils::div_up(padT - ((KH - 1) * DH + KH) + 1, SH));
+    int oh_end = min(OH, 1 + (padT + IH - 1) / SH);
 
-    auto apply_offset = [=](int index, int offset) {
-        return (index > offset) ? index - offset : 0;
-    };
+    int od_start = max(0, utils::div_up(padF - ((KD - 1) * DD + KD) + 1, SD));
+    int od_end = min(OD, 1 + (padF + ID - 1) / SD);
 
-    auto ker_zero = [=](int _mb, int _oc) {
-        for (int id = 0; id < ID; ++id) {
-            for (int ih = 0; ih < IH; ++ih) {
-                for (int iw = 0; iw < IW; ++iw) {
-                    const auto offset = is_3d ?
-                        diff_src_d.off(_mb, _oc, id, ih, iw)
-                        : diff_src_d.off(_mb, _oc, ih, iw);
-                    diff_src[offset] =
-                        data_type_t(0);
-                }
-            }
-        }
-    };
-
-    auto ker_max = [=](const mkldnn_bfloat16_t *d, int mb, int oc, int od, int oh,
-            int ow) {
-        const size_t ws_off = is_3d
-            ? ws_d.off(mb, oc, od, oh, ow)
-            : ws_d.off(mb, oc, oh, ow);
-        const int index = ws_d.data_type() == data_type::u8
-            ? (int)ws[ws_off] : ((int *)ws)[ws_off];
-
-        const int invalid_index_value = ws_d.data_type() == data_type::u8
-            ? numeric_limits<typename prec_traits<data_type::u8>::type>::max()
-            : -1;
-        if (index == invalid_index_value)
-           return; // corner case: pool window is outside of real input domain
-                   // for this point, do nothing
-
-        const int kw = index % KW;
-        const int kh = (index / KW) % KH;
-        const int kd = (index / KW) / KH;
-        const int id = od * SD - padF + kd;
-        const int ih = oh * SH - padT + kh;
-        const int iw = ow * SW - padL + kw;
-
-        // If padding area could fit the kernel,
-        // then input displacement would be out of bounds.
-        // No need to back propagate there as padding is
-        // virtual in pooling_max case.
-        if (id < 0 || id >= ID)
-            return;
-        if (ih < 0 || ih >= IH)
-            return;
-        if (iw < 0 || iw >= IW)
-            return;
-
-        const auto offset = is_3d
-            ? diff_src_d.off(mb, oc, id, ih, iw)
-            : diff_src_d.off(mb, oc, ih, iw);
-
-        float ds = cvt_bfloat16_to_float(diff_src[offset]);
-        ds += cvt_bfloat16_to_float(d[0]); 
-        diff_src[offset] = cvt_float_to_bfloat16(ds);
-    };
-
-    auto ker_avg = [=](const mkldnn_bfloat16_t *d, int mb, int oc, int od, int oh,
-            int ow) {
-        auto id_start = apply_offset(od*SD, padF);
-        auto ih_start = apply_offset(oh*SH, padT);
-        auto iw_start = apply_offset(ow*SW, padL);
-        auto id_end = nstl::min(od*SD - padF + KD, ID);
-        auto ih_end = nstl::min(oh*SH - padT + KH, IH);
-        auto iw_end = nstl::min(ow*SW - padL + KW, IW);
-
-        auto num_summands = (alg == pooling_avg_include_padding) ? KW*KH*KD
-            : (ih_end - ih_start)*(iw_end - iw_start)*(id_end - id_start);
-        assert(num_summands > 0);
-
-        for (int id = id_start; id < id_end; ++id)
-        for (int ih = ih_start; ih < ih_end; ++ih)
-        for (int iw = iw_start; iw < iw_end; ++iw) {
-            const auto offset = is_3d
-                ? diff_src_d.off(mb, oc, id, ih, iw)
-                : diff_src_d.off(mb, oc, ih, iw);
-            float ds = cvt_bfloat16_to_float(diff_src[offset]);
-            ds += cvt_bfloat16_to_float(d[0]) / num_summands; 
-            diff_src[offset] = cvt_float_to_bfloat16(ds);
-        }
-    };
-
-    if (pd()->desc()->alg_kind == alg_kind::pooling_max) {
+    if (alg == alg_kind::pooling_max) {
         parallel_nd(MB, OC, [&](int mb, int oc) {
             ker_zero(mb, oc);
-            for (int od = 0; od < OD; ++od) {
-                for (int oh = 0; oh < OH; ++oh) {
-                    for (int ow = 0; ow < OW; ++ow) {
-                        const data_t *d = is_3d
-                            ? &diff_dst[diff_dst_d.off(mb, oc, od, oh, ow)]
-                            : &diff_dst[diff_dst_d.off(mb, oc, oh, ow)];
-                        ker_max(d, mb, oc, od, oh, ow);
-                    }
-                }
+            for_(int od = od_start; od < od_end; ++od)
+            for_(int oh = oh_start; oh < oh_end; ++oh)
+            for (int ow = ow_start; ow < ow_end; ++ow) {
+                const data_t *d
+                        = &diff_dst[get_offset(diff_dst_d, mb, oc, od, oh, ow)];
+                ker_max(d, mb, oc, od, oh, ow);
             }
         });
     } else {
         parallel_nd(MB, OC, [&](int mb, int oc) {
             ker_zero(mb, oc);
-            for (int od = 0; od < OD; ++od) {
-                for (int oh = 0; oh < OH; ++oh) {
-                    for (int ow = 0; ow < OW; ++ow) {
-                        const data_t *d = is_3d
-                            ? &diff_dst[diff_dst_d.off(mb, oc, od, oh, ow)]
-                            : &diff_dst[diff_dst_d.off(mb, oc, oh, ow)];
-                        ker_avg(d, mb, oc, od, oh, ow);
-                    }
-                }
+            for_(int od = od_start; od < od_end; ++od)
+            for_(int oh = oh_start; oh < oh_end; ++oh)
+            for (int ow = ow_start; ow < ow_end; ++ow) {
+                const data_t *d
+                        = &diff_dst[get_offset(diff_dst_d, mb, oc, od, oh, ow)];
+                ker_avg(d, mb, oc, od, oh, ow);
             }
         });
     }
 }
 
-template struct ref_pooling_fwd_t<data_type::f32, data_type::f32>;
-template struct ref_pooling_fwd_t<data_type::s32, data_type::s32>;
+template struct ref_pooling_fwd_t<data_type::f32, data_type::f32, data_type::f32>;
+template struct ref_pooling_fwd_t<data_type::s32, data_type::s32, data_type::s32>;
 template struct ref_pooling_fwd_t<data_type::bf16, data_type::bf16, data_type::f32>;
-template struct ref_pooling_fwd_t<data_type::s16, data_type::s16, data_type::s32>;
 template struct ref_pooling_fwd_t<data_type::s8, data_type::s8, data_type::s32>;
 template struct ref_pooling_fwd_t<data_type::u8, data_type::u8, data_type::s32>;
 template struct ref_pooling_fwd_t<data_type::s8, data_type::f32, data_type::f32>;
@@ -688,10 +388,8 @@ template struct ref_pooling_fwd_t<data_type::u8, data_type::f32, data_type::f32>
 template struct ref_pooling_bwd_t<data_type::f32>;
 template struct ref_pooling_bwd_t<data_type::s32>;
 template struct ref_pooling_bwd_t<data_type::bf16>;
-template struct ref_pooling_bwd_t<data_type::s16>;
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl
 
-}
-}
-}
-
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s
+// vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s

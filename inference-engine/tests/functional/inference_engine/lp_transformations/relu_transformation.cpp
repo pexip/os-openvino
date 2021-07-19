@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Intel Corporation
+// Copyright (C) 2018-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,8 +15,8 @@
 #include <low_precision/relu.hpp>
 
 #include "common_test_utils/ngraph_test_utils.hpp"
-#include "ngraph_functions/low_precision_transformations/common/dequantization_operations.hpp"
-#include "ngraph_functions/low_precision_transformations/relu_function.hpp"
+#include "lpt_ngraph_functions/common/dequantization_operations.hpp"
+#include "lpt_ngraph_functions/relu_function.hpp"
 #include "simple_low_precision_transformer.hpp"
 
 namespace {
@@ -235,7 +235,7 @@ const std::vector<ReluTransformationTestValues> testValues = {
 };
 
 INSTANTIATE_TEST_CASE_P(
-    LPT,
+    smoke_LPT,
     ReluTransformation,
     ::testing::ValuesIn(testValues),
     ReluTransformation::getTestCaseName);

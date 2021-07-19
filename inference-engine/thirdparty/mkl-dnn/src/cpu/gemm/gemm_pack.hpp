@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019 Intel Corporation
+* Copyright 2019-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,96 +14,84 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GEMM_PACK_HPP
-#define GEMM_PACK_HPP
+#ifndef CPU_GEMM_GEMM_PACK_HPP
+#define CPU_GEMM_GEMM_PACK_HPP
 
-#include "mkldnn_types.h"
+#include "dnnl_config.h"
+#include "dnnl_types.h"
 
-#include "cpu_isa_traits.hpp"
+#include "common/bfloat16.hpp"
 
-#include "os_blas.hpp"
-
-namespace mkldnn {
+namespace dnnl {
 namespace impl {
 namespace cpu {
 
-#if USE_MKL_PACKED_GEMM
-static inline bool pack_sgemm_supported() {
-    return true;
-}
-#else
-static inline bool pack_sgemm_supported() {
-    return mayiuse(sse42);
-}
-#endif
+bool pack_sgemm_supported();
+bool pack_gemm_bf16bf16f32_supported();
 
-static inline bool pack_gemm_bf16bf16f32_supported() {
-    return mayiuse(avx512_core);
-}
-
-mkldnn_status_t MKLDNN_API sgemm_pack_get_size(const char *identifier,
-        const char *transa, const char *transb, const int *M, const int *N,
-        const int *K, const int *lda, const int *ldb, size_t *size,
+dnnl_status_t DNNL_API sgemm_pack_get_size(const char *identifier,
+        const char *transa, const char *transb, const dim_t *M, const dim_t *N,
+        const dim_t *K, const dim_t *lda, const dim_t *ldb, size_t *size,
         bool *pack = nullptr);
 
-mkldnn_status_t MKLDNN_API gemm_bf16bf16f32_pack_get_size(const char *identifier,
-        const char *transa, const char *transb, const int *M, const int *N,
-        const int *K, const int *lda, const int *ldb, size_t *size,
+dnnl_status_t DNNL_API gemm_bf16bf16f32_pack_get_size(const char *identifier,
+        const char *transa, const char *transb, const dim_t *M, const dim_t *N,
+        const dim_t *K, const dim_t *lda, const dim_t *ldb, size_t *size,
         bool *pack = nullptr);
 
-mkldnn_status_t MKLDNN_API gemm_s8u8s32_pack_get_size(const char *identifier,
-        const char *transa, const char *transb, const int *M, const int *N,
-        const int *K, const int *lda, const int *ldb, size_t *size,
+dnnl_status_t DNNL_API gemm_s8u8s32_pack_get_size(const char *identifier,
+        const char *transa, const char *transb, const dim_t *M, const dim_t *N,
+        const dim_t *K, const dim_t *lda, const dim_t *ldb, size_t *size,
         bool *pack = nullptr);
 
-mkldnn_status_t MKLDNN_API gemm_s8s8s32_pack_get_size(const char *identifier,
-        const char *transa, const char *transb, const int *M, const int *N,
-        const int *K, const int *lda, const int *ldb, size_t *size,
+dnnl_status_t DNNL_API gemm_s8s8s32_pack_get_size(const char *identifier,
+        const char *transa, const char *transb, const dim_t *M, const dim_t *N,
+        const dim_t *K, const dim_t *lda, const dim_t *ldb, size_t *size,
         bool *pack = nullptr);
 
-mkldnn_status_t MKLDNN_API sgemm_pack(const char *identifier, const char *transa,
-        const char *transb, const int *M, const int *N, const int *K,
-        const int *lda, const int *ldb, const float *src, float *dst);
+dnnl_status_t DNNL_API sgemm_pack(const char *identifier, const char *transa,
+        const char *transb, const dim_t *M, const dim_t *N, const dim_t *K,
+        const dim_t *lda, const dim_t *ldb, const float *src, float *dst);
 
-mkldnn_status_t MKLDNN_API gemm_bf16bf16f32_pack(const char *identifier,
-        const char *transa, const char *transb, const int *M, const int *N,
-        const int *K, const int *lda, const int *ldb, const mkldnn_bfloat16_t *src,
-        mkldnn_bfloat16_t *dst);
+dnnl_status_t DNNL_API gemm_bf16bf16f32_pack(const char *identifier,
+        const char *transa, const char *transb, const dim_t *M, const dim_t *N,
+        const dim_t *K, const dim_t *lda, const dim_t *ldb,
+        const bfloat16_t *src, bfloat16_t *dst);
 
-mkldnn_status_t MKLDNN_API gemm_s8u8s32_pack(const char *identifier,
-        const char *transa, const char *transb, const int *M, const int *N,
-        const int *K, const int *lda, const int *ldb, const void *src,
+dnnl_status_t DNNL_API gemm_s8u8s32_pack(const char *identifier,
+        const char *transa, const char *transb, const dim_t *M, const dim_t *N,
+        const dim_t *K, const dim_t *lda, const dim_t *ldb, const void *src,
         void *dst);
 
-mkldnn_status_t MKLDNN_API gemm_s8s8s32_pack(const char *identifier,
-        const char *transa, const char *transb, const int *M, const int *N,
-        const int *K, const int *lda, const int *ldb, const void *src,
+dnnl_status_t DNNL_API gemm_s8s8s32_pack(const char *identifier,
+        const char *transa, const char *transb, const dim_t *M, const dim_t *N,
+        const dim_t *K, const dim_t *lda, const dim_t *ldb, const void *src,
         void *dst);
 
-mkldnn_status_t MKLDNN_API sgemm_compute(const char *transa, const char *transb,
-        const int *M, const int *N, const int *K, const float *A,
-        const int *lda, const float *B, const int *ldb, const float *beta,
-        float *C, const int *ldc);
+dnnl_status_t DNNL_API sgemm_compute(const char *transa, const char *transb,
+        const dim_t *M, const dim_t *N, const dim_t *K, const float *A,
+        const dim_t *lda, const float *B, const dim_t *ldb, const float *beta,
+        float *C, const dim_t *ldc);
 
-mkldnn_status_t MKLDNN_API gemm_bf16bf16f32_compute(const char *transa,
-        const char *transb, const int *M, const int *N, const int *K,
-        const mkldnn_bfloat16_t *A, const int *lda, const mkldnn_bfloat16_t *B,
-        const int *ldb, const float *beta, float *C, const int *ldc);
+dnnl_status_t DNNL_API gemm_bf16bf16f32_compute(const char *transa,
+        const char *transb, const dim_t *M, const dim_t *N, const dim_t *K,
+        const bfloat16_t *A, const dim_t *lda, const bfloat16_t *B,
+        const dim_t *ldb, const float *beta, float *C, const dim_t *ldc);
 
-mkldnn_status_t MKLDNN_API gemm_s8u8s32_compute(const char *transa,
-        const char *transb, const char *offsetc, const int *M, const int *N,
-        const int *K, const int8_t *A, const int *lda, const uint8_t *B,
-        const int *ldb, const float *beta, int32_t *C, const int *ldc,
+dnnl_status_t DNNL_API gemm_s8u8s32_compute(const char *transa,
+        const char *transb, const char *offsetc, const dim_t *M, const dim_t *N,
+        const dim_t *K, const int8_t *A, const dim_t *lda, const uint8_t *B,
+        const dim_t *ldb, const float *beta, int32_t *C, const dim_t *ldc,
         const int32_t *co);
 
-mkldnn_status_t MKLDNN_API gemm_s8s8s32_compute(const char *transa,
-        const char *transb, const char *offsetc, const int *M, const int *N,
-        const int *K, const int8_t *A, const int *lda, const int8_t *B,
-        const int *ldb, const float *beta, int32_t *C, const int *ldc,
+dnnl_status_t DNNL_API gemm_s8s8s32_compute(const char *transa,
+        const char *transb, const char *offsetc, const dim_t *M, const dim_t *N,
+        const dim_t *K, const int8_t *A, const dim_t *lda, const int8_t *B,
+        const dim_t *ldb, const float *beta, int32_t *C, const dim_t *ldc,
         const int32_t *co);
 
 } // namespace cpu
 } // namespace impl
-} // namespace mkldnn
+} // namespace dnnl
 
-#endif // GEMM_PACK_HPP
+#endif // CPU_GEMM_GEMM_PACK_HPP

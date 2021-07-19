@@ -1,6 +1,7 @@
-// Copyright (C) 2018-2019 Intel Corporation
+// Copyright (C) 2018-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #define INTEL_GNA_DLLEXPORT 1
 
 #if GNA_LIB_VER == 1
@@ -186,6 +187,16 @@ GNA2_API enum Gna2Status Gna2InstrumentationConfigAssignToRequestConfig(
     uint32_t instrumentationConfigId,
     uint32_t requestConfigId) {
     return Gna2StatusSuccess;
+}
+
+GNA2_API enum Gna2Status Gna2GetLibraryVersion(
+    char* versionBuffer,
+    uint32_t versionBufferSize) {
+    if (versionBuffer != nullptr && versionBufferSize > 0) {
+        versionBuffer[0] = '\0';
+        return Gna2StatusSuccess;
+    }
+    return Gna2StatusNullArgumentNotAllowed;
 }
 
 #elif GNA_LIB_VER == 1

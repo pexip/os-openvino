@@ -1,5 +1,5 @@
 #===============================================================================
-# Copyright 2016-2018 Intel Corporation
+# Copyright 2016-2020 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,24 +14,17 @@
 # limitations under the License.
 #===============================================================================
 
+
 file(GLOB_RECURSE HEADERS
     ${PROJECT_BINARY_DIR}/include/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/*.hpp
     )
-file(GLOB_RECURSE SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
-    )
-include_directories(
-    ${PROJECT_BINARY_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/common
-    ${CMAKE_CURRENT_SOURCE_DIR}/cpu
-    ${CMAKE_CURRENT_SOURCE_DIR}/cpu/xbyak
-    )
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
+if (DNNL_LIBRARY_TYPE STREQUAL "SHARED")
+    add_definitions(-DDNNL_DLL_EXPORTS)
+endif()
 
 # propagate SRC specific flags
 append(CMAKE_C_FLAGS "${CMAKE_SRC_CCXX_FLAGS}")
@@ -45,55 +38,69 @@ append(CMAKE_CXX_FLAGS "${CMAKE_CCXX_NOWARN_FLAGS}")
 append(CMAKE_C_FLAGS "${CMAKE_CCXX_SANITIZER_FLAGS}")
 append(CMAKE_CXX_FLAGS "${CMAKE_CCXX_SANITIZER_FLAGS}")
 
-if(NOT MKLDNN_VERBOSE)
+if(NOT DNNL_VERBOSE)
     add_definitions(-DDISABLE_VERBOSE)
 endif()
 
-if(MKLDNN_ENABLE_CONCURRENT_EXEC)
-    add_definitions(-DMKLDNN_ENABLE_CONCURRENT_EXEC)
+if(DNNL_ENABLE_CONCURRENT_EXEC)
+    add_definitions(-DDNNL_ENABLE_CONCURRENT_EXEC)
 endif()
 
-if(VTUNEROOT)
-    include_directories(${VTUNEROOT}/include)
-    add_definitions(-DJIT_PROFILING_VTUNE)
+if(DNNL_ENABLE_PRIMITIVE_CACHE)
+    message(STATUS "Primitive cache is enabled")
+else()
+    add_definitions(-DDNNL_DISABLE_PRIMITIVE_CACHE)
+    message(STATUS "Primitive cache is disabled")
+endif()
+
+if(DNNL_ENABLE_JIT_PROFILING AND UNIX AND NOT APPLE)
+    # Not every compiler adds -ldl automatically
+    list(APPEND EXTRA_SHARED_LIBS "${CMAKE_DL_LIBS}")
+endif()
+
+if(DNNL_ENABLE_MAX_CPU_ISA)
+    add_definitions(-DDNNL_ENABLE_MAX_CPU_ISA)
 endif()
 
 if(WIN32)
     add_definitions(-D_WIN)
     add_definitions(-DNOMINMAX)
-    # Correct 'jnl' macro/jit issue
-    if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
-        append(CMAKE_CXX_FLAGS "/Qlong-double")
+endif()
+
+# Windows does not support weak/strong symbols and no guarrantees by the linker
+# for out_of_memory testing to work. Not tested on macOS
+if(UNIX)
+    if(DNNL_ENABLE_MEM_DEBUG)
+        add_definitions(-DDNNL_ENABLE_MEM_DEBUG)
     endif()
 endif()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
-    # to make computations more stable and to align the jitted code
-    # with the reference one use precise division and square root
-    # by default
-    file(GLOB FILES_REQUIRED_PREC_SQRT
-        ${CMAKE_CURRENT_SOURCE_DIR}/cpu/*normalization*.cpp)
-    file(GLOB FILES_REQUIRED_PREC_DIV
-        ${CMAKE_CURRENT_SOURCE_DIR}/cpu/*normalization*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/cpu/ref_rnn.cpp)
-    if(WIN32)
-        set_source_files_properties(${FILES_REQUIRED_PREC_SQRT}
-            PROPERTIES COMPILE_FLAGS "/Qprec-sqrt")
-        set_source_files_properties(${FILES_REQUIRED_PREC_DIV}
-            PROPERTIES COMPILE_FLAGS "/Qprec-div")
-    else()
-        set_source_files_properties(${FILES_REQUIRED_PREC_SQRT}
-            PROPERTIES COMPILE_FLAGS "-prec-sqrt")
-        set_source_files_properties(${FILES_REQUIRED_PREC_DIV}
-            PROPERTIES COMPILE_FLAGS "-prec-div")
+macro(enable_conditional_compilation4 target)
+    if(COMMAND ie_mark_target_as_cc)
+        ie_mark_target_as_cc(${target})
+        if(SELECTIVE_BUILD STREQUAL "ON")
+            # After disabling a block of code, some variables might be unused.
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+                    OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
+                target_compile_options(${target} PRIVATE -Wno-unused-variable)
+            endif()
+        endif()
     endif()
+endmacro()
+
+add_subdirectory(common)
+add_subdirectory(cpu)
+
+if(NOT DNNL_GPU_RUNTIME STREQUAL "NONE")
+    add_subdirectory(gpu)
 endif()
 
-add_library(${LIB_NAME} ${MKLDNN_LIBRARY_TYPE} ${HEADERS} ${SOURCES})
-set_property(TARGET ${LIB_NAME} PROPERTY CXX_STANDARD 11)
-set_property(TARGET ${LIB_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
-set_property(TARGET ${LIB_NAME} PROPERTY VERSION "${MKLDNN_VERSION_MAJOR}.${MKLDNN_VERSION_MINOR}")
-set_property(TARGET ${LIB_NAME} PROPERTY SOVERSION "${MKLDNN_VERSION_MAJOR}")
+get_property(LIB_DEPS GLOBAL PROPERTY DNNL_LIB_DEPS)
+add_library(${LIB_NAME} ${DNNL_LIBRARY_TYPE}
+    ${VERSION_RESOURCE_FILE} ${HEADERS} ${LIB_DEPS})
+
+set_property(TARGET ${LIB_NAME} PROPERTY VERSION "${DNNL_VERSION_MAJOR}.${DNNL_VERSION_MINOR}")
+set_property(TARGET ${LIB_NAME} PROPERTY SOVERSION "${DNNL_VERSION_MAJOR}")
 set_property(TARGET ${LIB_NAME} PROPERTY PUBLIC_HEADER ${HEADERS})
 
 target_include_directories(${LIB_NAME} PUBLIC
@@ -106,7 +113,7 @@ target_include_directories(${LIB_NAME} PUBLIC
 target_link_libraries_build(${LIB_NAME}
     "${EXTRA_SHARED_LIBS};${EXTRA_STATIC_LIBS}")
 target_link_libraries_install(${LIB_NAME} "${EXTRA_SHARED_LIBS}")
-if(MKLDNN_LIBRARY_TYPE STREQUAL "STATIC")
+if(DNNL_LIBRARY_TYPE STREQUAL "STATIC")
     target_link_libraries_install(${LIB_NAME} "${EXTRA_STATIC_LIBS}")
 endif()
 
@@ -140,10 +147,74 @@ install(EXPORT ${LIB_EXPORT_NAME}
     NAMESPACE ${LIB_NAMESPACE}
     DESTINATION ${LIB_CONFIG_INSTALL_DIR})
 
-# On Windows we need to add mkldnn.dll path to CTESTCONFIG_PATH which is later
+# Intel MKL-DNN compat cmake files
+#install(CODE "execute_process(COMMAND ${CMAKE_COMMAND}
+#    -DDIR=\$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/cmake
+#    -P ${PROJECT_SOURCE_DIR}/cmake/gen_mkldnn_compat_cmakes.cmake)")
+
+# Intel MKL-DNN compat libraries
+#if (WIN32)
+#    if (NOT MINGW)
+#        set(prefix "")
+#        set(ext ".lib")
+#    else()
+#        set(prefix "lib")
+#        if (DNNL_LIBRARY_TYPE STREQUAL "SHARED")
+#            set(ext ".dll.a")
+#        else()
+#            set(ext ".a")
+#        endif()
+#    endif()
+#    add_custom_target(compat_libs ALL
+#        ${CMAKE_COMMAND} -E copy
+#        $<TARGET_LINKER_FILE_DIR:${LIB_NAME}>/$<TARGET_LINKER_FILE_NAME:${LIB_NAME}>
+#        $<TARGET_LINKER_FILE_DIR:${LIB_NAME}>/${prefix}mkldnn${ext}
+#        # Workaround for MSB8065 warning.
+#        COMMAND ${CMAKE_COMMAND} -E touch "CMakeFiles/compat_libs"
+#        DEPENDS ${LIB_NAME})
+#    install(FILES $<TARGET_LINKER_FILE_DIR:${LIB_NAME}>/${prefix}mkldnn${ext}
+#        DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+#else()
+#    if(DNNL_LIBRARY_TYPE STREQUAL "SHARED")
+#        set_ternary(ext APPLE ".dylib" ".so")
+#        set(vers ".${DNNL_VERSION_MAJOR};.${DNNL_VERSION_MAJOR}.${DNNL_VERSION_MINOR}")
+#    else()
+#        set(ext ".a")
+#        set(vers "")
+#    endif()
+#    foreach(ver "" ${vers})
+#        set_ternary(ext_and_ver APPLE "${ver}${ext}" "${ext}${ver}")
+#        get_property(lib_location TARGET ${LIB_NAME} PROPERTY LIBRARY_OUTPUT_DIRECTORY)
+#        if(lib_location)
+#            set(compat_link "${lib_location}/libmkldnn${ext_and_ver}")
+#        else()
+#            set(compat_link "${CMAKE_CURRENT_BINARY_DIR}/libmkldnn${ext_and_ver}")
+#        endif()
+#        add_custom_command(OUTPUT ${compat_link}
+#            # to make the next command work fine
+#            COMMAND ${CMAKE_COMMAND} -E remove -f ${compat_link}
+#            COMMAND ${CMAKE_COMMAND} -E create_symlink libdnnl${ext_and_ver} ${compat_link}
+#            DEPENDS ${LIB_NAME})
+#        add_custom_target(compat_libs${ver} ALL DEPENDS ${compat_link})
+#        install(FILES ${compat_link} DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+#    endforeach()
+#endif()
+
+# Install custom find modules for transitive dependencies
+set(LIB_CONFIG_INSTALL_DIR_COMPAT "${CMAKE_INSTALL_LIBDIR}/cmake/mkldnn")
+
+if(DNNL_GPU_RUNTIME STREQUAL "OCL")
+    install(FILES
+        "../cmake/FindOpenCL.cmake"
+        DESTINATION ${LIB_CONFIG_INSTALL_DIR})
+    install(FILES "../cmake/FindOpenCL.cmake"
+            DESTINATION ${LIB_CONFIG_INSTALL_DIR_COMPAT})
+endif()
+
+# On Windows we need to add dnnl.dll path to CTESTCONFIG_PATH which is later
 # passed to ctest and Visual Studio solutions
 if(WIN32)
-    if(NOT(MINGW))
+    if(CMAKE_GENERATOR MATCHES "Visual Studio")
         foreach(BUILD_TYPE Release Debug RelWithDebInfo MinSizeRel)
             append_to_windows_path_list(CTESTCONFIG_PATH
                 "${CMAKE_CURRENT_BINARY_DIR}/${BUILD_TYPE}")

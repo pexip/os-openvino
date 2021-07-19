@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018 Intel Corporation
+* Copyright 2018-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,69 +14,77 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
-#include "mkldnn.h"
+#include "dnnl.h"
 
-#include "mkldnn_common.hpp"
-#include "mkldnn_debug.hpp"
+#include "dnnl_common.hpp"
+#include "dnnl_debug.hpp"
 
 #include "ip/ip.hpp"
+
 namespace ip {
 
 void prb_t::generate_oscales() {
-    if (attr.oscale.policy != attr_t::scale_t::policy_t::PER_OC) return;
+    if (attr.oscale.is_def()) return;
+
+    if (attr.oscale.policy == policy_t::COMMON) {
+        scales = (float *)zmalloc(sizeof(float), 4);
+        SAFE_V(scales != nullptr ? OK : FAIL);
+        scales[0] = attr.oscale.scale;
+        return;
+    }
+
+    assert(attr.oscale.policy == policy_t::PER_OC);
 
     scales = (float *)zmalloc(sizeof(float) * oc, 64);
-    SAFE_V(scales != NULL ? OK : FAIL);
+    SAFE_V(scales != nullptr ? OK : FAIL);
 
     const float K = 32;
     /* scale in [1/K .. K], with starting point at oscale.scale */
-    float s[2] = {attr.oscale.scale, attr.oscale.scale/2};
-    for (int i = 0; i < oc; ++i) {
-        int si = i % 2; // 0 -> left, 1 -> right
+    float s[2] = {attr.oscale.scale, attr.oscale.scale / 2};
+    for (int64_t i = 0; i < oc; ++i) {
+        int64_t si = i % 2; // 0 -> left, 1 -> right
         scales[i] = s[si];
         if (si == 0) {
             s[si] /= 2.;
-            if (s[si] < 1./K) s[si] *= K*K; // turn around to become ~K
+            if (s[si] < 1. / K) s[si] *= K * K; // turn around to become ~K
         } else {
             s[si] *= 2.;
-            if (s[si] > K) s[si] /= K*K; // turn around to become ~K
+            if (s[si] > K) s[si] /= K * K; // turn around to become ~K
         }
     }
 }
 
 int str2desc(desc_t *desc, const char *str) {
-    desc_t d{0};
+    // Canonical form: mbXicXidXihXiwXocXnS,
+    // where
+    //     X is integer
+    //     S is string
+    // note: symbol `_` is ignored.
+    // Cubic/square shapes are supported by specifying just highest dimension.
 
-    /* canonical form:
-     * mbXicXidXihXiwXSocXnS
-     *
-     * where: X is number, S - string
-     * note: symbol `_` is ignored
-     *
-     * implicit rules:
-     *  - default values:
-     *      mb = 2, id = 1, S="wip", ih = 1
-     *  - if W is undefined => W = H
-     */
-
+    desc_t d {0};
     d.mb = 2;
-    d.name = "\"wip\"";
 
     const char *s = str;
     assert(s);
 
-#   define CASE_NN(p, c) do { \
-        if (!strncmp(p, s, strlen(p))) { \
-            ok = 1; s += strlen(p); \
-            char *end_s; d. c = strtol(s, &end_s, 10); s += (end_s - s); \
-            /* printf("@@@debug: %s: %d\n", p, d. c); */ \
+#define CASE_NN(prb, c) \
+    do { \
+        if (!strncmp(prb, s, strlen(prb))) { \
+            ok = 1; \
+            s += strlen(prb); \
+            char *end_s; \
+            d.c = strtol(s, &end_s, 10); \
+            s += (end_s - s); \
+            if (d.c < 0) return FAIL; \
+            /* printf("@@@debug: %s: %d\n", prb, d. c); */ \
         } \
     } while (0)
-#   define CASE_N(c) CASE_NN(#c, c)
+#define CASE_N(c) CASE_NN(#c, c)
     while (*s) {
         int ok = 0;
         CASE_N(mb);
@@ -85,64 +93,58 @@ int str2desc(desc_t *desc, const char *str) {
         CASE_N(iw);
         CASE_N(id);
         CASE_N(oc);
-        if (*s == 'n') { d.name = s + 1; break; }
+        if (*s == 'n') {
+            d.name = s + 1;
+            break;
+        }
         if (*s == '_') ++s;
         if (!ok) return FAIL;
     }
-#   undef CASE_NN
-#   undef CASE_N
+#undef CASE_NN
+#undef CASE_N
 
     if (d.ic == 0 || d.oc == 0) return FAIL;
 
-    if (d.id == 0) d.id = 1;
-    if (d.ih == 0) d.ih = 1;
-    if (d.iw == 0) d.iw = d.ih;
-    if (d.ic == 0 || d.ih == 0 || d.iw == 0) return FAIL;
+    if (sanitize_desc(d.ndims, {d.id}, {d.ih}, {d.iw}, {1}) != OK) return FAIL;
 
     *desc = d;
 
     return OK;
 }
 
-void desc2str(const desc_t *d, char *buffer, bool canonical) {
-    int rem_len = max_desc_len;
-#   define DPRINT(...) do { \
-        int l = snprintf(buffer, rem_len, __VA_ARGS__); \
-        buffer += l; rem_len -= l; \
-    } while(0)
-#   define is_1d(d) (d->ih == 1 && d->id == 1)
-    if (canonical || d->mb != 2) DPRINT("mb%d", d->mb);
-    DPRINT("oc%d", d->oc);
-    DPRINT("ic%d", d->ic);
-    if (d->id > 1) DPRINT("id%d", d->id);
-    if (canonical || !is_1d(d)) DPRINT("ih%d", d->ih);
-    if (canonical || d->iw != d->ih || d->id > 1 || is_1d(d))
-        DPRINT("iw%d", d->iw);
-    DPRINT("n%s", d->name);
+std::ostream &operator<<(std::ostream &s, const desc_t &d) {
+    bool print_d = true, print_h = true, print_w = true;
+    print_dhw(print_d, print_h, print_w, d.ndims, {d.id}, {d.ih}, {d.iw});
 
-#   undef DPRINT
+    if (canonical || d.mb != 2) s << "mb" << d.mb;
+
+    s << "ic" << d.ic;
+
+    if (print_d) s << "id" << d.id;
+    if (print_h) s << "ih" << d.ih;
+    if (print_w) s << "iw" << d.iw;
+
+    s << "oc" << d.oc;
+
+    if (d.name) s << "n" << d.name;
+
+    return s;
 }
 
+std::ostream &operator<<(std::ostream &s, const prb_t &prb) {
+    dump_global_params(s);
+    settings_t def;
 
-void prb2str(const prb_t *p, char *buffer, bool canonical) {
-    char desc_buf[max_desc_len], attr_buf[max_attr_len];
-    char dir_str[32] = {0}, cfg_str[32] = {0};
-    desc2str(p, desc_buf, canonical);
-    snprintf(dir_str, sizeof(dir_str), "--dir=%s ", dir2str(p->dir));
-    snprintf(cfg_str, sizeof(cfg_str), "--cfg=%s ", cfg2str(p->cfg));
-    bool is_attr_def = p->attr.is_def();
-    if (!is_attr_def) {
-        int len = snprintf(attr_buf, max_attr_len, "--attr=\"");
-        SAFE_V(len >= 0 ? OK : FAIL);
-        attr2str(&p->attr, attr_buf + len);
-        len = (int)strnlen(attr_buf, max_attr_len);
-        snprintf(attr_buf + len, max_attr_len - len, "\" ");
-    }
-    snprintf(buffer, max_prb_len, "%s%s%s%s",
-            p->dir == FWD_B ? "" : dir_str,
-            p->cfg == conf_f32 ? "" : cfg_str,
-            is_attr_def ? "" : attr_buf,
-            desc_buf);
+    if (canonical || prb.dir != def.dir[0]) s << "--dir=" << prb.dir << " ";
+    if (canonical || prb.cfg != def.cfg[0]) s << "--cfg=" << prb.cfg << " ";
+    if (canonical || prb.stag != def.stag[0]) s << "--stag=" << prb.stag << " ";
+    if (canonical || prb.wtag != def.wtag[0]) s << "--wtag=" << prb.wtag << " ";
+    if (canonical || prb.dtag != def.dtag[0]) s << "--dtag=" << prb.dtag << " ";
+
+    s << prb.attr;
+    s << static_cast<const desc_t &>(prb);
+
+    return s;
 }
 
-}
+} // namespace ip

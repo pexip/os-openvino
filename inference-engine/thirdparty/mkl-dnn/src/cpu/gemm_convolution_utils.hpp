@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2019 Intel Corporation
+* Copyright 2016-2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,64 +14,120 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_JIT_GEMM_CONVOLUTION_UTILS_HPP
-#define CPU_JIT_GEMM_CONVOLUTION_UTILS_HPP
+#ifndef CPU_GEMM_CONVOLUTION_UTILS_HPP
+#define CPU_GEMM_CONVOLUTION_UTILS_HPP
 
-#include "c_types_map.hpp"
-#include "memory_tracking.hpp"
-#include "mkldnn_thread.hpp"
+#include "common/c_types_map.hpp"
+#include "common/dnnl_thread.hpp"
+#include "common/memory_tracking.hpp"
 
-#include "cpu_convolution_pd.hpp"
-#include "cpu_engine.hpp"
-#include "jit_primitive_conf.hpp"
+#include "cpu/cpu_convolution_pd.hpp"
+#include "cpu/cpu_engine.hpp"
 
-namespace mkldnn {
+namespace dnnl {
 namespace impl {
 namespace cpu {
 
+enum conv_gemm_loop_order_t { gemm_loop_rlb, gemm_loop_lrb, gemm_loop_lbr };
+struct conv_gemm_conf_t {
+    prop_kind_t prop_kind;
+
+    int mb;
+    int ngroups, ic, oc;
+    int iw, ih, id, ow, oh, od;
+    int l_pad, t_pad, f_pad;
+    int kh, kw, kd;
+    int stride_h, stride_w, stride_d;
+    int dilate_h, dilate_w, dilate_d;
+    bool with_bias;
+    bool is_nspc;
+
+    int is, os, ks;
+    int ic_block, oc_block;
+
+    int nthr;
+    ptrdiff_t im2col_sz;
+    bool need_wei_reduction;
+    bool signed_input;
+    int oh_block;
+    int ow_block;
+    int os_block, os_nb_block;
+    bool outer_threading;
+    conv_gemm_loop_order_t loop_order;
+    int nthr_oc;
+
+    bool with_input_zp;
+    bool with_weights_zp;
+};
+
+namespace gemm_convolution_utils {
+
+struct pp_kernel_t {
+    static pp_kernel_t *create(
+            const convolution_pd_t *pd, const conv_gemm_conf_t &jcp);
+
+    virtual ~pp_kernel_t() = default;
+
+    virtual void operator()(float *dst, const float *bias, const int len, const int oc_start, const int oc_work, const int oc_stride) const = 0;
+
+    virtual status_t create_kernel() { return status::success; }
+
+protected:
+    pp_kernel_t(const convolution_pd_t *pd, const conv_gemm_conf_t &jcp);
+
+    bool do_bias_ = false;
+    post_ops_t post_ops_;
+};
+
+} // namespace gemm_convolution_utils
+
 namespace jit_gemm_convolution_utils {
 template <typename data_type_t>
-void im2col_3d(const jit_gemm_conv_conf_t &jcp, const data_type_t *im,
-    data_type_t *col, int od);
+void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
+        data_type_t *col, int od, int spatial_step, int spatial_block);
+
+template <typename T>
+void transpose_dt(const conv_gemm_conf_t &jcp, const T *__restrict im,
+        T *__restrict imtr);
+
+template <typename im_dt, typename col_dt>
+void im2col_dt_3d(const conv_gemm_conf_t &jcp, const im_dt *__restrict im,
+        col_dt *__restrict col, int od, const uint8_t *__restrict input_zp = nullptr);
 
 template <typename data_type_t>
-void im2col(const jit_gemm_conv_conf_t &jcp, const data_type_t *__restrict im,
-       data_type_t *__restrict col, int ss, int sb, int cs, int cb);
+void im2col(const conv_gemm_conf_t &jcp, const data_type_t *__restrict im,
+        data_type_t *__restrict col, int ss, int sb, int cs, int cb);
+
+template <typename im_dt, typename col_dt>
+void im2col_dt(const conv_gemm_conf_t &jcp, const im_dt *__restrict im,
+        im_dt *__restrict imtr, col_dt *__restrict col, int hs, int hb, int ws,
+        int wb, const uint8_t *__restrict input_zp = nullptr);
 
 template <typename T>
-void im2col_u8(const jit_gemm_conv_conf_t &jcp, const T *__restrict im,
-        T* __restrict imtr, uint8_t *__restrict col,
-        int hs, int hb, int ws, int wb, const uint8_t *__restrict input_zp, int32_t *__restrict weights_zp_compensation);
+void col2im_dt(
+        const conv_gemm_conf_t &jcp, const T *__restrict col, T *__restrict im);
+void col2im_3d(const conv_gemm_conf_t &jcp, const float *col, float *im, int od,
+        int spatial_step, int spatial_block);
+void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
+        int spatial_step, int spatial_block);
 
-template <typename T>
-void transpose_u8(const jit_gemm_conv_conf_t &jcp, const T *__restrict im,
-                  T *__restrict imtr, const uint8_t *__restrict input_zp);
-
-template <typename T>
-void im2col_u8_3d(const jit_gemm_conv_conf_t &jcp, const T *__restrict imtr,
-        uint8_t *__restrict col, int od, const uint8_t *__restrict input_zp, int32_t *__restrict weights_zp_compensation);
-
-void col2im_s32(const jit_gemm_conv_conf_t &jcp, const int32_t *__restrict col,
-        int32_t *__restrict im);
-void col2im_3d(const jit_gemm_conv_conf_t &jcp, const float *col, float *im,
-        int od);
-void col2im(const jit_gemm_conv_conf_t &jcp, const float *col, float *im);
-
-status_t init_conf(jit_gemm_conv_conf_t &jcp,
+status_t init_conf(conv_gemm_conf_t &jcp,
         memory_tracking::registrar_t &scratchpad, const convolution_desc_t &cd,
-        const memory_desc_wrapper &src_d, const memory_desc_wrapper &weights_d,
-        const memory_desc_wrapper &dst_d, const primitive_attr_t &attr, int max_threads);
+        memory_desc_t &src_md, memory_desc_t &weights_md, memory_desc_t &dst_md,
+        memory_desc_t &bias_md, const primitive_attr_t &attr, int max_threads);
 
-void bwd_weights_balance(int ithr, int nthr, int ngroups, int mb,
-        int &ithr_g, int &nthr_g, int &ithr_mb, int &nthr_mb);
-void bwd_weights_reduction_par(int ithr, int nthr,
-        const jit_gemm_conv_conf_t &jcp, const float *weights_reduce_ws,
+void bwd_weights_balance(int ithr, int nthr, int ngroups, int mb, int &ithr_g,
+        int &nthr_g, int &ithr_mb, int &nthr_mb);
+void bwd_weights_reduction_par_ncsp(int ithr, int nthr,
+        const conv_gemm_conf_t &jcp, const float *weights_reduce_ws,
         float *weights);
+void bwd_weights_reduction_par_nspc(int ithr, int nthr, size_t g_start,
+        size_t g_end, const conv_gemm_conf_t &jcp,
+        const float *weights_reduce_base, float *diff_weights);
+} // namespace jit_gemm_convolution_utils
 
-}
-
-}
-}
-}
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl
 
 #endif
