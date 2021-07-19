@@ -31,8 +31,10 @@ git checkout ${TAG}
 git submodule init
 git submodule update --recursive --init
 
-# Disable ade: we use the system one
+# Disable submodules: we use the system libraries
 git submodule deinit inference-engine/thirdparty/ade
+git submodule deinit thirdparty/xbyak
+git submodule deinit thirdparty/zlib/zlib
 
 # Prevent export of vendored third-party sources we don't want
 cat >.git/info/attributes <<EOF
@@ -41,7 +43,8 @@ inference-engine/thirdparty/ade export-ignore
 inference-engine/thirdparty/clDNN export-ignore
 inference-engine/thirdparty/movidius export-ignore
 inference-engine/thirdparty/pugixml export-ignore
-inference-engine/thirdparty/stb_lib export-ignore
+thirdparty/xbyak export-ignore
+thirdparty/zlib export-ignore
 EOF
 
 git archive --prefix=openvino-${TAG}/ -o openvino_${TAG}.tar HEAD
