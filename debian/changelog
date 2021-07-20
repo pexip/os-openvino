@@ -1,6 +1,19 @@
 openvino (2021.4+repack1-0pexip1) pexip; urgency=medium
 
   * New upstream release
+  * debian/copyright: Refresh
+  * debian/patches/disable-docs.patch,
+    debian/patches/install-path.patch,
+    debian/patches/system-ade.patch,
+    debian/patches/system-onnx.patch: Refresh
+  * debian/patches/remove-stb.patch: Drop; unused
+  * debian/patches/remove-tbbbind.patch: Remove usage of TBBBIND
+  * debian/patches/remove-zlib.patch: Remove vendored zlib
+  * debian/patches/system-tbb.patch: Fix FTBFS with system TBB
+  * debian/patches/system-xbyak.patch,
+    debian/control,
+    debian/rules: Build against system xbyak
+  * debian/rules: Define TBBROOT, not TBB_DIR
 
  -- John-Mark Bell <jmb@pexip.com>  Mon, 19 Jul 2021 13:59:26 +0100
 
