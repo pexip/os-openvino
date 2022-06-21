@@ -1,18 +1,14 @@
-diff --git a/thirdparty/CMakeLists.txt b/thirdparty/CMakeLists.txt
-index 2c6b6564..c9618f9c 100644
 --- a/thirdparty/CMakeLists.txt
 +++ b/thirdparty/CMakeLists.txt
-@@ -10,5 +10,4 @@
+@@ -12,5 +12,4 @@
      add_subdirectory(xbyak EXCLUDE_FROM_ALL)
      openvino_developer_export_targets(COMPONENT openvino_common TARGETS xbyak)
  endif()
 -add_subdirectory(zlib EXCLUDE_FROM_ALL)
  add_subdirectory(cnpy EXCLUDE_FROM_ALL)
-diff --git a/inference-engine/CMakeLists.txt b/inference-engine/CMakeLists.txt
-index 1ac7fd8b..b39efc38 100644
 --- a/inference-engine/CMakeLists.txt
 +++ b/inference-engine/CMakeLists.txt
-@@ -72,12 +72,6 @@ endif()
+@@ -72,12 +72,6 @@
  
  ie_cpack_add_component(cpp_samples DEPENDS core)
  
