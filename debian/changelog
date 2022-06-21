@@ -1,6 +1,7 @@
-openvino (2021.4+repack1-0pexip2) pexip; urgency=medium
+openvino (2021.4.2+repack1-0pexip1) pexip; urgency=medium
 
   * Initial bullseye build
+  * Update to openvino 2021.4.2 (LTS release)
 
  -- Mark Hymers <mark.hymers@pexip.com>  Thu, 02 Jun 2022 14:42:39 +0100
 
