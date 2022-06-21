@@ -32,7 +32,8 @@ CONFFLAGS := \
 	-DTHREADING=TBB_AUTO \
 	-DUSE_SYSTEM_ADE=ON \
 	-DUSE_SYSTEM_PUGIXML=ON \
-	-DUSE_SYSTEM_XBYAK=ON
+	-DUSE_SYSTEM_XBYAK=ON \
+	-DTREAT_WARNING_AS_ERROR=OFF \
 #	--debug-output --trace --trace-expand
 
 override_dh_auto_configure:
