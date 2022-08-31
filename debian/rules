@@ -9,6 +9,14 @@ DOT_IN_FILES := \
 %:
 	dh $@
 
+DEB_HOST_ARCH = $(shell dpkg-architecture -qDEB_HOST_ARCH)
+
+ifeq ($(DEB_HOST_ARCH), amd64)
+	USE_XBYAK=ON
+else
+	USE_XBYAK=OFF
+endif
+
 CONFFLAGS := \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DENABLE_CLANG_FORMAT=OFF \
@@ -32,7 +40,7 @@ CONFFLAGS := \
 	-DTHREADING=TBB_AUTO \
 	-DUSE_SYSTEM_ADE=ON \
 	-DUSE_SYSTEM_PUGIXML=ON \
-	-DUSE_SYSTEM_XBYAK=ON \
+	-DUSE_SYSTEM_XBYAK=$(USE_XBYAK) \
 	-DTREAT_WARNING_AS_ERROR=OFF \
 #	--debug-output --trace --trace-expand
 

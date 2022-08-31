@@ -1,3 +1,9 @@
+openvino (2021.4.2+repack1-0pexip3) pexip-bullseye; urgency=medium
+
+  * Only use xbyak on amd64 (doesn't exist on arm64).
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Wed, 31 Aug 2022 14:05:42 +0100
+
 openvino (2021.4.2+repack1-0pexip2) pexip-bullseye; urgency=medium
 
   * Main bullseye build

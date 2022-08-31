@@ -14,7 +14,7 @@ Build-Depends:
  libtbb-dev,
  protobuf-compiler,
  shellcheck,
- libxbyak-dev
+ libxbyak-dev [amd64]
 Homepage: https://01.org/openvinotoolkit
 Vcs-Browser: https://github.com/openvinotoolkit/openvino
 Vcs-Git: https://github.com/openvinotoolkit/openvino.git
