@@ -1,3 +1,17 @@
+openvino (2021.4.2+repack1-0pexip6) pexip; urgency=medium
+
+  * remove model-optimizer and calls to the PERF macro
+
+    * There is no use, in production of the model-optimizer for us. So don't
+      compile it nor bundle it.
+    * The PERF macro is used for debugging and optimizing the performance of
+      OpenVINO applications. They allow analysis of the performance
+      characteristics of ML models and identification of potential bottlenecks.
+      However, we don't really want them in production as we want inference
+      to happen as fast as possible.
+
+ -- Camilo Celis Guzman <camilo@pexip.com>  Wed, 28 Jun 2023 15:46:24 +0000
+
 openvino (2021.4.2+repack1-0pexip5) pexip; urgency=medium
 
   * Rebuild for new protobuf/onnx
