@@ -6,3 +6,5 @@ remove-tbbbind.patch
 system-tbb.patch
 system-xbyak.patch
 remove-zlib.patch
+disable-model-optimizer.patch
+disable-perf-macro.patch
