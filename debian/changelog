@@ -1,3 +1,9 @@
+openvino (2021.4.2+repack1-0pexip7) pexip; urgency=medium
+
+  * Rebuild for new protobuf/onnx
+
+ -- Huw Jones <huw@pexip.com>  Tue, 11 Jul 2023 10:46:30 +0100
+
 openvino (2021.4.2+repack1-0pexip6) pexip; urgency=medium
 
   * remove model-optimizer and calls to the PERF macro
