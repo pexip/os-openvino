@@ -1,0 +1,585 @@
+<?xml version="1.0" ?>
+<net name="tensor_iterator_example" version="11">
+	<layers>
+		<layer id="4" name="Reshape/placeholder_out_port_0" type="Parameter" version="opset1">
+			<data shape="1,490" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="Reshape:0">
+					<dim>1</dim>
+					<dim>490</dim>
+					<rt_info/>
+				</port>
+			</output>
+		</layer>
+		<layer id="0" name="7175251" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="1" name="7276239" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="2" name="7377260" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="3" name="7478227" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="5" name="Reshape_1/shape21236" type="Const" version="opset1">
+			<data offset="4" size="24" shape="3" element_type="i64"/>
+			<output>
+				<port id="0" precision="I64" names="Reshape_1/shape:0">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="6" name="Reshape_1" type="Reshape" version="opset1">
+			<data special_zero="false"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>490</dim>
+				</port>
+				<port id="1">
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Reshape_1:0">
+					<dim>1</dim>
+					<dim>49</dim>
+					<dim>10</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="7" name="LSTM-Layer/lstm/concat23263" type="Const" version="opset1">
+			<data offset="28" size="24" shape="3" element_type="i64"/>
+			<output>
+				<port id="0" precision="I64" names="LSTM-Layer/lstm/concat:0">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="8" name="LSTM-Layer/lstm/transpose" type="Transpose" version="opset1">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>49</dim>
+					<dim>10</dim>
+				</port>
+				<port id="1">
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="LSTM-Layer/lstm/transpose:0">
+					<dim>49</dim>
+					<dim>1</dim>
+					<dim>10</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="9" name="Constant_45525218" type="Const" version="opset1">
+			<data offset="52" size="1376" shape="1,344" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="LSTM-Layer/lstm/rnn/while/Enter_3:0">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="10" name="ShapeOf_451" type="ShapeOf" version="opset3">
+			<data output_type="i64"/>
+			<input>
+				<port id="0">
+					<dim>49</dim>
+					<dim>1</dim>
+					<dim>10</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="I64">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="11" name="Constant_45327257" type="Const" version="opset1">
+			<data offset="1428" size="8" shape="1" element_type="i64"/>
+			<output>
+				<port id="0" precision="I64">
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="12" name="Constant_45228221" type="Const" version="opset1">
+			<data offset="1436" size="8" shape="" element_type="i64"/>
+			<output>
+				<port id="0" precision="I64"/>
+			</output>
+		</layer>
+		<layer id="13" name="Gather_454" type="Gather" version="opset8">
+			<data batch_dims="0"/>
+			<input>
+				<port id="0">
+					<dim>3</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+				</port>
+				<port id="2"/>
+			</input>
+			<output>
+				<port id="3" precision="I64">
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="14" name="Constant_46130233" type="Const" version="opset1">
+			<data offset="1444" size="8" shape="1" element_type="i64"/>
+			<output>
+				<port id="0" precision="I64">
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="15" name="Concat_462" type="Concat" version="opset1">
+			<data axis="0"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="I64">
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="16" name="Broadcast_463" type="Broadcast" version="opset3">
+			<data mode="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+				<port id="1">
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="17" name="Constant_46633224" type="Const" version="opset1">
+			<data offset="52" size="1376" shape="1,344" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="LSTM-Layer/lstm/rnn/while/Enter_2:0">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="18" name="Broadcast_474" type="Broadcast" version="opset3">
+			<data mode="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+				<port id="1">
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="19" name="LSTM-Layer/lstm/rnn/while/LoopCond/TensorIteratorCondition_/TensorIterator" type="TensorIterator" version="opset1">
+			<input>
+				<port id="0">
+					<dim>49</dim>
+					<dim>1</dim>
+					<dim>10</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+				<port id="2">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+			</input>
+			<output>
+				<port id="3" precision="FP32" names="LSTM-Layer/lstm/rnn/while/Exit_3:0">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+			<port_map>
+				<input external_port_id="0" internal_layer_id="2" axis="0" start="0" stride="1" end="-1" part_size="1"/>
+				<input external_port_id="1" internal_layer_id="0"/>
+				<input external_port_id="2" internal_layer_id="1"/>
+				<output external_port_id="3" internal_layer_id="10"/>
+			</port_map>
+			<back_edges>
+				<edge from-layer="10" to-layer="0"/>
+				<edge from-layer="9" to-layer="1"/>
+			</back_edges>
+			<body>
+				<layers>
+					<layer id="2" name="27" type="Parameter" version="opset1">
+						<data shape="1,1,10" element_type="f32"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="27"/>
+						</rt_info>
+						<output>
+							<port id="0" precision="FP32">
+								<dim>1</dim>
+								<dim>1</dim>
+								<dim>10</dim>
+								<rt_info/>
+							</port>
+						</output>
+					</layer>
+					<layer id="0" name="29" type="Parameter" version="opset1">
+						<data shape="1,344" element_type="f32"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="29"/>
+						</rt_info>
+						<output>
+							<port id="0" precision="FP32">
+								<dim>1</dim>
+								<dim>344</dim>
+								<rt_info/>
+							</port>
+						</output>
+					</layer>
+					<layer id="1" name="31" type="Parameter" version="opset1">
+						<data shape="1,344" element_type="f32"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="31"/>
+						</rt_info>
+						<output>
+							<port id="0" precision="FP32">
+								<dim>1</dim>
+								<dim>344</dim>
+								<rt_info/>
+							</port>
+						</output>
+					</layer>
+					<layer id="3" name="252711566" type="Const" version="opset1">
+						<data offset="1436" size="8" shape="1" element_type="i64"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="25271"/>
+						</rt_info>
+						<output>
+							<port id="0" precision="I64">
+								<dim>1</dim>
+							</port>
+						</output>
+					</layer>
+					<layer id="4" name="LSTM-Layer/lstm/rnn/while/TensorArrayReadV3/Output_0/Data_/InputSqueeze" type="Squeeze" version="opset1">
+						<rt_info>
+							<attribute name="fused_names" version="0" value="LSTM-Layer/lstm/rnn/while/TensorArrayReadV3/Output_0/Data_/InputSqueeze"/>
+						</rt_info>
+						<input>
+							<port id="0">
+								<dim>1</dim>
+								<dim>1</dim>
+								<dim>10</dim>
+							</port>
+							<port id="1">
+								<dim>1</dim>
+							</port>
+						</input>
+						<output>
+							<port id="2" precision="FP32" names="LSTM-Layer/lstm/rnn/while/TensorArrayReadV3:0">
+								<dim>1</dim>
+								<dim>10</dim>
+							</port>
+						</output>
+					</layer>
+					<layer id="5" name="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Split2372771775" type="Const" version="opset1">
+						<data offset="17964" size="55040" shape="1376,10" element_type="f32"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Split237277"/>
+						</rt_info>
+						<output>
+							<port id="0" precision="FP32">
+								<dim>1376</dim>
+								<dim>10</dim>
+							</port>
+						</output>
+					</layer>
+					<layer id="6" name="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Split2382741869" type="Const" version="opset1">
+						<data offset="73004" size="1893376" shape="1376,344" element_type="f32"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Split238274"/>
+						</rt_info>
+						<output>
+							<port id="0" precision="FP32">
+								<dim>1376</dim>
+								<dim>344</dim>
+							</port>
+						</output>
+					</layer>
+					<layer id="7" name="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/BiasAdd/Enter1972" type="Const" version="opset1">
+						<data offset="1966380" size="5504" shape="1376" element_type="f32"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/BiasAdd/Enter"/>
+						</rt_info>
+						<output>
+							<port id="0" precision="FP32" names="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/BiasAdd/Enter:0">
+								<dim>1376</dim>
+							</port>
+						</output>
+					</layer>
+					<layer id="8" name="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell" type="LSTMCell" version="opset4">
+						<data hidden_size="344" activations="sigmoid,tanh,tanh" clip="0"/>
+						<rt_info>
+							<attribute name="fused_names" version="0" value="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell"/>
+						</rt_info>
+						<input>
+							<port id="0">
+								<dim>1</dim>
+								<dim>10</dim>
+							</port>
+							<port id="1">
+								<dim>1</dim>
+								<dim>344</dim>
+							</port>
+							<port id="2">
+								<dim>1</dim>
+								<dim>344</dim>
+							</port>
+							<port id="3">
+								<dim>1376</dim>
+								<dim>10</dim>
+							</port>
+							<port id="4">
+								<dim>1376</dim>
+								<dim>344</dim>
+							</port>
+							<port id="5">
+								<dim>1376</dim>
+							</port>
+						</input>
+						<output>
+							<port id="6" precision="FP32" names="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/mul_2:0">
+								<dim>1</dim>
+								<dim>344</dim>
+							</port>
+							<port id="7" precision="FP32" names="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/add_1:0">
+								<dim>1</dim>
+								<dim>344</dim>
+							</port>
+						</output>
+					</layer>
+					<layer id="9" name="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Output_1/Data_/sink_port_0" type="Result" version="opset1">
+						<rt_info>
+							<attribute name="fused_names" version="0" value="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Output_1/Data_/sink_port_0"/>
+						</rt_info>
+						<input>
+							<port id="0">
+								<dim>1</dim>
+								<dim>344</dim>
+							</port>
+						</input>
+					</layer>
+					<layer id="10" name="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Output_0/Data_/sink_port_0" type="Result" version="opset1">
+						<rt_info>
+							<attribute name="fused_names" version="0" value="LSTM-Layer/lstm/rnn/while/rnn/basic_lstm_cell/concat/LSTMCell/Output_0/Data_/sink_port_0"/>
+						</rt_info>
+						<input>
+							<port id="0">
+								<dim>1</dim>
+								<dim>344</dim>
+							</port>
+						</input>
+					</layer>
+				</layers>
+				<edges>
+					<edge from-layer="2" from-port="0" to-layer="4" to-port="0"/>
+					<edge from-layer="3" from-port="0" to-layer="4" to-port="1"/>
+					<edge from-layer="4" from-port="2" to-layer="8" to-port="0"/>
+					<edge from-layer="0" from-port="0" to-layer="8" to-port="1"/>
+					<edge from-layer="1" from-port="0" to-layer="8" to-port="2"/>
+					<edge from-layer="5" from-port="0" to-layer="8" to-port="3"/>
+					<edge from-layer="6" from-port="0" to-layer="8" to-port="4"/>
+					<edge from-layer="7" from-port="0" to-layer="8" to-port="5"/>
+					<edge from-layer="8" from-port="7" to-layer="9" to-port="0"/>
+					<edge from-layer="8" from-port="6" to-layer="10" to-port="0"/>
+				</edges>
+			</body>
+		</layer>
+		<layer id="20" name="Output-Layer/MatMul/fq_input_0" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="21" name="8185254" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="22" name="8286230" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="23" name="8387242" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="24" name="8488248" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="25" name="W_o/read36245" type="Const" version="opset1">
+			<data offset="1452" size="16512" shape="12,344" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="W_o/read:0">
+					<dim>12</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="26" name="Output-Layer/MatMul/fq_weights_1" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>12</dim>
+					<dim>344</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>12</dim>
+					<dim>344</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="27" name="Output-Layer/MatMul" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>344</dim>
+				</port>
+				<port id="1">
+					<dim>12</dim>
+					<dim>344</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Output-Layer/MatMul,Output-Layer/MatMul:0">
+					<dim>1</dim>
+					<dim>12</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="28" name="Output-Layer/MatMul:0" type="Result" version="opset1">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>12</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="4" from-port="0" to-layer="6" to-port="0"/>
+		<edge from-layer="5" from-port="0" to-layer="6" to-port="1"/>
+		<edge from-layer="6" from-port="2" to-layer="8" to-port="0"/>
+		<edge from-layer="7" from-port="0" to-layer="8" to-port="1"/>
+		<edge from-layer="8" from-port="2" to-layer="10" to-port="0"/>
+		<edge from-layer="10" from-port="1" to-layer="13" to-port="0"/>
+		<edge from-layer="11" from-port="0" to-layer="13" to-port="1"/>
+		<edge from-layer="12" from-port="0" to-layer="13" to-port="2"/>
+		<edge from-layer="13" from-port="3" to-layer="15" to-port="0"/>
+		<edge from-layer="14" from-port="0" to-layer="15" to-port="1"/>
+		<edge from-layer="9" from-port="0" to-layer="16" to-port="0"/>
+		<edge from-layer="15" from-port="2" to-layer="16" to-port="1"/>
+		<edge from-layer="17" from-port="0" to-layer="18" to-port="0"/>
+		<edge from-layer="15" from-port="2" to-layer="18" to-port="1"/>
+		<edge from-layer="8" from-port="2" to-layer="19" to-port="0"/>
+		<edge from-layer="16" from-port="2" to-layer="19" to-port="1"/>
+		<edge from-layer="18" from-port="2" to-layer="19" to-port="2"/>
+		<edge from-layer="19" from-port="3" to-layer="20" to-port="0"/>
+		<edge from-layer="0" from-port="0" to-layer="20" to-port="1"/>
+		<edge from-layer="1" from-port="0" to-layer="20" to-port="2"/>
+		<edge from-layer="2" from-port="0" to-layer="20" to-port="3"/>
+		<edge from-layer="3" from-port="0" to-layer="20" to-port="4"/>
+		<edge from-layer="25" from-port="0" to-layer="26" to-port="0"/>
+		<edge from-layer="21" from-port="0" to-layer="26" to-port="1"/>
+		<edge from-layer="22" from-port="0" to-layer="26" to-port="2"/>
+		<edge from-layer="23" from-port="0" to-layer="26" to-port="3"/>
+		<edge from-layer="24" from-port="0" to-layer="26" to-port="4"/>
+		<edge from-layer="20" from-port="5" to-layer="27" to-port="0"/>
+		<edge from-layer="26" from-port="5" to-layer="27" to-port="1"/>
+		<edge from-layer="27" from-port="2" to-layer="28" to-port="0"/>
+	</edges>
+	<rt_info>
+		<MO_version value="custom_HEAD_a22c5f16b60ade2761d7da817c653fc02bff9874"/>
+		<Runtime_version value="2023.1.0-11966-a22c5f16b60-HEAD"/>
+		<conversion_parameters>
+			<input value="Reshape:0"/>
+			<input_model value="DIR/tensor_iterator_example.pb"/>
+			<input_shape value="(1,490)"/>
+			<is_python_api_used value="False"/>
+			<model_name value="tensor_iterator_example"/>
+			<output value="Output-Layer/MatMul"/>
+			<output_dir value="DIR"/>
+		</conversion_parameters>
+		<legacy_frontend value="True"/>
+	</rt_info>
+	<quantization_parameters>
+		<config/>
+		<version value="{}"/>
+		<cli_params value="{}"/>
+	</quantization_parameters>
+</net>

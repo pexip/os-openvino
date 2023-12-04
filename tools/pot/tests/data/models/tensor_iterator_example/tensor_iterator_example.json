@@ -1,0 +1,10 @@
+{
+  "name": "tensor_iterator_example",
+  "framework": "tf",
+  "mo_args": {
+    "input_model": "$model_dir/tensor_iterator_example/tensor_iterator_example.pb",
+    "input_shape": "'(1,490)'",
+    "input": "Reshape:0",
+    "output": "Output-Layer/MatMul"
+  }
+}

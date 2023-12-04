@@ -1,1 +1,7 @@
-pytest-dependency==0.5.1
+-c ../constraints.txt
+numpy
+pytest
+pytest-dependency
+pytest-html
+py
+PyYAML

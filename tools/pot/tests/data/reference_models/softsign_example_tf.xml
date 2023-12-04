@@ -1,0 +1,414 @@
+<?xml version="1.0" ?>
+<net name="TensorFlow_Frontend_IR" version="11">
+	<layers>
+		<layer id="4" name="x" type="Parameter" version="opset1">
+			<data shape="1,2,3" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="model_1/dense/Tensordot/transpose,model_1/dense/Tensordot/transpose:0,x,x:0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>3</dim>
+					<rt_info/>
+				</port>
+			</output>
+		</layer>
+		<layer id="0" name="99103357" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="1" name="100104369" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="2" name="101105372" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="3" name="102106366" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="5" name="model_1/dense/Tensordot/Shape" type="ShapeOf" version="opset3">
+			<data output_type="i32"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="I32" names="model_1/dense/Tensordot/Shape,model_1/dense/Tensordot/Shape:0">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="6" name="model_1/dense/Tensordot/free21318" type="Const" version="opset1">
+			<data offset="4" size="8" shape="2" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="model_1/dense/Tensordot/free,model_1/dense/Tensordot/free:0">
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="7" name="model_1/dense/Tensordot/GatherV2/axis22354" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="model_1/dense/Tensordot/GatherV2/axis,model_1/dense/Tensordot/GatherV2/axis:0"/>
+			</output>
+		</layer>
+		<layer id="8" name="model_1/dense/Tensordot/GatherV2" type="Gather" version="opset8">
+			<data batch_dims="0"/>
+			<input>
+				<port id="0">
+					<dim>3</dim>
+				</port>
+				<port id="1">
+					<dim>2</dim>
+				</port>
+				<port id="2"/>
+			</input>
+			<output>
+				<port id="3" precision="I32" names="model_1/dense/Tensordot/GatherV2,model_1/dense/Tensordot/GatherV2:0">
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="9" name="model_1/dense/Tensordot/Const_224324" type="Const" version="opset1">
+			<data offset="12" size="4" shape="1" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="model_1/dense/Tensordot/Const_2,model_1/dense/Tensordot/Const_2:0">
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="10" name="model_1/dense/Tensordot/concat_1" type="Concat" version="opset1">
+			<data axis="0"/>
+			<input>
+				<port id="0">
+					<dim>2</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="I32" names="model_1/dense/Tensordot/concat_1,model_1/dense/Tensordot/concat_1:0">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="11" name="6973348" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="12" name="7074360" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="13" name="7175378" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="14" name="7276342" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="15" name="5963321" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="16" name="6064330" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="17" name="6165363" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="18" name="6266351" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="19" name="Transpose_188918327" type="Const" version="opset1">
+			<data offset="16" size="48" shape="4,3" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32">
+					<dim>4</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="20" name="model_1/dense/Tensordot/MatMul/fq_weights_1" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>4</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>4</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="21" name="model_1/dense/Tensordot/stack16375" type="Const" version="opset1">
+			<data offset="64" size="16" shape="2" element_type="i64"/>
+			<output>
+				<port id="0" precision="I64" names="model_1/dense/Tensordot/stack,model_1/dense/Tensordot/stack:0">
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="22" name="109113333" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="23" name="110114345" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="24" name="111115336" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="25" name="112116339" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="26" name="x/fq_output_0_0" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="27" name="model_1/dense/Tensordot/Reshape" type="Reshape" version="opset1">
+			<data special_zero="false"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1">
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="model_1/dense/Tensordot/Reshape,model_1/dense/Tensordot/Reshape:0">
+					<dim>2</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="28" name="model_1/dense/Tensordot/MatMul" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true"/>
+			<input>
+				<port id="0">
+					<dim>2</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1">
+					<dim>4</dim>
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="29" name="model_1/dense/Tensordot/MatMul/fq_output_0_0" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32" names="model_1/dense/Tensordot/MatMul,model_1/dense/Tensordot/MatMul:0">
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="30" name="model_1/dense/Tensordot" type="Reshape" version="opset1">
+			<data special_zero="false"/>
+			<input>
+				<port id="0">
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+				<port id="1">
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="model_1/dense/BiasAdd,model_1/dense/BiasAdd:0,model_1/dense/Tensordot,model_1/dense/Tensordot:0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="31" name="model_1/dense/Softsign/pre_fq_input" type="SoftSign" version="opset9">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="32" name="model_1/dense/Softsign" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32" names="Identity,Identity:0,model_1/dense/Softsign,model_1/dense/Softsign:0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="33" name="Identity:0" type="Result" version="opset1">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>2</dim>
+					<dim>4</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="4" from-port="0" to-layer="5" to-port="0"/>
+		<edge from-layer="5" from-port="1" to-layer="8" to-port="0"/>
+		<edge from-layer="6" from-port="0" to-layer="8" to-port="1"/>
+		<edge from-layer="7" from-port="0" to-layer="8" to-port="2"/>
+		<edge from-layer="8" from-port="3" to-layer="10" to-port="0"/>
+		<edge from-layer="9" from-port="0" to-layer="10" to-port="1"/>
+		<edge from-layer="19" from-port="0" to-layer="20" to-port="0"/>
+		<edge from-layer="15" from-port="0" to-layer="20" to-port="1"/>
+		<edge from-layer="16" from-port="0" to-layer="20" to-port="2"/>
+		<edge from-layer="17" from-port="0" to-layer="20" to-port="3"/>
+		<edge from-layer="18" from-port="0" to-layer="20" to-port="4"/>
+		<edge from-layer="4" from-port="0" to-layer="26" to-port="0"/>
+		<edge from-layer="22" from-port="0" to-layer="26" to-port="1"/>
+		<edge from-layer="23" from-port="0" to-layer="26" to-port="2"/>
+		<edge from-layer="24" from-port="0" to-layer="26" to-port="3"/>
+		<edge from-layer="25" from-port="0" to-layer="26" to-port="4"/>
+		<edge from-layer="26" from-port="5" to-layer="27" to-port="0"/>
+		<edge from-layer="21" from-port="0" to-layer="27" to-port="1"/>
+		<edge from-layer="27" from-port="2" to-layer="28" to-port="0"/>
+		<edge from-layer="20" from-port="5" to-layer="28" to-port="1"/>
+		<edge from-layer="28" from-port="2" to-layer="29" to-port="0"/>
+		<edge from-layer="11" from-port="0" to-layer="29" to-port="1"/>
+		<edge from-layer="12" from-port="0" to-layer="29" to-port="2"/>
+		<edge from-layer="13" from-port="0" to-layer="29" to-port="3"/>
+		<edge from-layer="14" from-port="0" to-layer="29" to-port="4"/>
+		<edge from-layer="29" from-port="5" to-layer="30" to-port="0"/>
+		<edge from-layer="10" from-port="2" to-layer="30" to-port="1"/>
+		<edge from-layer="30" from-port="2" to-layer="31" to-port="0"/>
+		<edge from-layer="31" from-port="1" to-layer="32" to-port="0"/>
+		<edge from-layer="0" from-port="0" to-layer="32" to-port="1"/>
+		<edge from-layer="1" from-port="0" to-layer="32" to-port="2"/>
+		<edge from-layer="2" from-port="0" to-layer="32" to-port="3"/>
+		<edge from-layer="3" from-port="0" to-layer="32" to-port="4"/>
+		<edge from-layer="32" from-port="5" to-layer="33" to-port="0"/>
+	</edges>
+	<rt_info>
+		<MO_version value="custom_HEAD_a22c5f16b60ade2761d7da817c653fc02bff9874"/>
+		<Runtime_version value="2023.1.0-11966-a22c5f16b60-HEAD"/>
+		<conversion_parameters>
+			<batch value="1"/>
+			<input_model value="DIR/softsign_example.pb"/>
+			<is_python_api_used value="False"/>
+			<model_name value="softsign_example"/>
+			<output_dir value="DIR"/>
+		</conversion_parameters>
+		<legacy_frontend value="False"/>
+	</rt_info>
+	<quantization_parameters>
+		<config/>
+		<version value="{}"/>
+		<cli_params value="{}"/>
+	</quantization_parameters>
+</net>

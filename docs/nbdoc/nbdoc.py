@@ -1,157 +1,125 @@
 import argparse
+import shutil
 from pathlib import Path
 from utils import (
     create_content,
     add_content_below,
-    load_secret,
-    process_notebook_name,
-    find_latest_artifact,
     verify_notebook_name,
-    generate_artifact_link,
-    remove_existing,
-    split_notebooks_into_sections,
 )
 from consts import (
+    artifacts_link,
     binder_template,
-    no_binder_template,
-    rst_template,
+    colab_template,
+    binder_colab_template,
+    blacklisted_extensions,
     notebooks_path,
-    repo_owner,
-    repo_name,
+    no_binder_template,
     repo_directory,
-    notebooks_docs,
-    section_names
+    repo_name,
+    repo_branch,
+    repo_owner,
 )
 from notebook import Notebook
 from section import Section
-from io import BytesIO
 from glob import glob
+from lxml import html
 from jinja2 import Template
+from urllib.request import urlretrieve
 from requests import get
-from zipfile import ZipFile
 import os
+import sys
 
 
-class NbDownloader:
-    """Class responsible for downloading and extracting notebooks"""
+class NbTravisDownloader:
+    @staticmethod
+    def download_from_jenkins(path: str = notebooks_path, artifact_link: str = artifacts_link):
+        """Function for downloading files from jenkins artifacts
 
-    def __init__(self, secret_path: str) -> None:
-        self.secret = load_secret(secret_path)
-        self.headers = {
-            "Accept": "application/vnd.github.v3+json",
-            "Authorization": f"token {self.secret}",
-        }
-        self.artifact_link = generate_artifact_link(repo_owner, repo_name)
-
-    def default_pipeline(self, path: str = notebooks_path) -> bool:
-        """Default pipeline for fetching, downloading and extracting rst files
-
-        :param path: Path to folder that will contain notebooks. Defaults to notebooks_path.
-        :type path: str
-        :returns: Returns if status is sucessful
-        :rtype: bool
-
+        :param path: path where notebooks files will be placed, defaults to notebooks_path
+        :type path: str, optional
+        :param artifact_link: link of notebooks artifacts rst files, defaults to artifacts_link
+        :type artifact_link: str, optional
         """
-        artifacts = self.fetch_artifacts()
-        latest_artifact = find_latest_artifact(artifacts)
-        download_link = self.generate_artifact_download_link(latest_artifact)
-        zipfile = self.download_rst_files(download_link)
-        if zipfile.testzip() is None:
-            remove_existing(path)
-        return self.extract_artifacts(zipfile, path=path)
+        def is_directory(path: str) -> bool:
+            """Helper fuction for checking whether path leads to subdirectory
 
-    def fetch_artifacts(self) -> dict:
-        """Fetching artifcats from github actions
+            :param path: Path to traversed file or directory
+            :type path: str
+            :return: Returns True if path leads to directory, otherwise False
+            :rtype: bool
+            """
+            return path[-1] == '/' and path != '../'
 
-        :returns: Artifacts in repo
-        :rtype: dict
+        def traverse(path: Path, link: str, blacklisted_extensions: list = blacklisted_extensions):
+            """Traverse recursively to download all directories with their subfolders, within given link.
 
-        """
-        return get(self.artifact_link, headers=self.headers).json()
+            :param path: Path to directory that file will be saved to.
+            :type path: Path
+            :param link: Link to hosted resources
+            :type link: str
+            """
+            path.mkdir(exist_ok=True)
+            page = get(link, verify=False).content
+            tree = html.fromstring(page)
+            # retrieve all links on page returning their content
+            tree = tree.xpath('//a[@*]/@href')
+            files = map(str, tree)
+            for file in files:
+                if is_directory(file):
+                    traverse(path.joinpath(file), link + file)
+                elif len(Path(file).suffix) > 0 and Path(file).suffix not in blacklisted_extensions:
+                    urlretrieve(link + file, path.joinpath(file))
 
-    def generate_artifact_download_link(self, artifact_id: int) -> str:
-        """Generate link based on link and latest artifact id containing rst files
-
-        :param artifact_id: Latest artifact id containing rst files
-        :type artifact_id: int
-        :returns: Link to download rst files
-        :rtype: str
-
-        """
-        return f"{self.artifact_link}/{artifact_id}/zip"
-
-    def download_rst_files(self, artifact_download_link: str) -> ZipFile:
-        """Downloading rst files
-
-        :param artifact_download_link: Generated link for downloading rst
-        :type artifact_download_link: str
-        :returns: Zipped archive of rst files
-        :rtype: ZipFile
-
-        """
-        artifact = get(artifact_download_link, headers=self.headers)
-        return ZipFile(BytesIO(artifact.content))
-
-    def extract_artifacts(self, zipfile: ZipFile, path: str) -> bool:
-        """Extracting all artifacts from zipped archive
-
-        :param zipfile: zipped rst files
-        :type zipfile: ZipFile
-        :param path: path to extract files to
-        :type path: str
-        :returns: Returns if status is sucessful
-        :rtype: bool
-
-        """
-        try:
-            zipfile.extractall(path=path)
-            return True
-        except ValueError:
-            return False
+        traverse(Path(path), artifact_link)
 
 
 class NbProcessor:
     def __init__(self, nb_path: str = notebooks_path):
         self.nb_path = nb_path
-        notebooks = [
-                Notebook(
-                    name=process_notebook_name(notebook),
-                    path=notebook,
-                )
-                for notebook in os.listdir(self.nb_path)
-                if verify_notebook_name(notebook)
-        ]
-        notebooks = split_notebooks_into_sections(notebooks)
-        self.rst_data = {
-            "sections": [
-                Section(name=section_name, notebooks=section_notebooks)
-                for section_name, section_notebooks in zip(section_names, notebooks)
-            ]
-            
-        }
         self.binder_data = {
+            "owner": repo_owner,
+            "repo": repo_name,
+            "folder": repo_directory,
+            "branch": repo_branch,
+        }
+        self.colab_data = {
             "owner": repo_owner,
             "repo": repo_name,
             "folder": repo_directory,
         }
 
-    def fetch_binder_list(self, file_format: str = 'txt') -> list:
-        """Funtion that fetches list of notebooks with binder buttons
+    def fetch_binder_list(self, file) -> list:
+        """Function that fetches list of notebooks with binder buttons
 
         :param file_format: Format of file containing list of notebooks with button. Defaults to 'txt'
         :type file_format: str
-        :return: List of notebooks conaining binder buttons
+        :return: List of notebooks containing binder buttons
         :rtype: list
         """
-        list_of_buttons = glob(f"{self.nb_path}/*.{file_format}")
+        list_of_buttons = glob(f"{self.nb_path}/{file}")
         if list_of_buttons:
             with open(list_of_buttons[0]) as file:
                 list_of_buttons = file.read().splitlines()
             return list_of_buttons
-        else:
-            return []
+        return []
 
-    def add_binder(self, buttons_list: list,  template_with_binder: str = binder_template, template_without_binder: str = no_binder_template):
+    def fetch_colab_list(self, file) -> list:
+        """Function that fetches list of notebooks with colab buttons
+
+        :param file_format: Format of file containing list of notebooks with button. Defaults to 'lst'
+        :type file_format: str
+        :return: List of notebooks containing colab buttons
+        :rtype: list
+        """
+        list_of_cbuttons = glob(f"{self.nb_path}/{file}")
+        if list_of_cbuttons:
+            with open(list_of_cbuttons[0]) as file:
+                list_of_cbuttons = file.read().splitlines()
+            return list_of_cbuttons
+        return []
+
+
+    def add_binder(self, buttons_list: list,  cbuttons_list: list, template_with_colab_and_binder: str = binder_colab_template, template_with_binder: str = binder_template, template_with_colab: str = colab_template, template_without_binder: str = no_binder_template):
         """Function working as an example how to add binder button to existing rst files
 
         :param buttons_list: List of notebooks that work on Binder.
@@ -163,51 +131,55 @@ class NbProcessor:
         :raises FileNotFoundError: In case of failure of adding content, error will appear
 
         """
+
         for notebook in [
             nb for nb in os.listdir(self.nb_path) if verify_notebook_name(nb)
         ]:
-            if '-'.join(notebook.split('-')[:-2]) in buttons_list:
-                button_text = create_content(template_with_binder, self.binder_data, notebook)
-                if not add_content_below(button_text, f"{self.nb_path}/{notebook}"):
-                    raise FileNotFoundError("Unable to modify file")
+            notebook_item = '-'.join(notebook.split('-')[:-2])
+
+            if notebook_item in buttons_list:
+                template = template_with_colab_and_binder if notebook_item in cbuttons_list else template_with_binder
             else:
-                button_text = create_content(template_without_binder, self.binder_data, notebook)
-                if not add_content_below(button_text, f"{self.nb_path}/{notebook}"):
-                    raise FileNotFoundError("Unable to modify file")
+                template = template_with_colab if notebook_item in cbuttons_list else template_without_binder
 
-    def render_rst(self, path: str = notebooks_docs, template: str = rst_template):
-        """Rendering rst file for all notebooks
+            button_text = create_content(template, self.binder_data, notebook)
+            if not add_content_below(button_text, f"{self.nb_path}/{notebook}"):
+                raise FileNotFoundError("Unable to modify file")
 
-        :param path: Path to notebook main rst file. Defaults to notebooks_docs.
-        :type path: str
-        :param template: Template for default rst page. Defaults to rst_template.
-        :type template: str
-
-        """
-        with open(path, "w+") as nb_file:
-            nb_file.writelines(Template(template).render(self.rst_data))
-
+def add_glob_directive(tutorials_file):
+        with open(tutorials_file, 'r+', encoding='cp437') as mainfile:
+            readfile = mainfile.read()
+            if ':glob:' not in readfile:
+                add_glob = readfile\
+                    .replace(":hidden:\n", ":hidden:\n   :glob:\n")\
+                    .replace("notebooks_installation\n", "notebooks_installation\n   notebooks/*\n")
+                mainfile.seek(0)
+                mainfile.write(add_glob)
+                mainfile.truncate()
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('secret', type=Path)
+    parser.add_argument('sourcedir', type=Path)
     parser.add_argument('outdir', type=Path)
+    parser.add_argument('-d', '--download', action='store_true')
     args = parser.parse_args()
-    secret = args.secret
+    sourcedir = args.sourcedir
     outdir = args.outdir
-    outdir.mkdir(parents=True, exist_ok=True)
-    # Step 1. Create secret file
-    # link: https://docs.github.com/en/github/authenticating-to-github/keeping-your-account-and-data-secure/creating-a-personal-access-token
-    # For this notebooks purpose only repo -> public_repo box is required
-    nbd = NbDownloader(secret)
-    # Step 2. Run default pipeline for downloading
-    if not nbd.default_pipeline(outdir):
-        raise FileExistsError("Files not downloaded")
+
+    main_tutorials_file = Path('../../docs/articles_en/learn_openvino/tutorials.md').resolve(strict=True)
+    add_glob_directive(main_tutorials_file)
+
+    if args.download:
+        outdir.mkdir(parents=True, exist_ok=True)
+        # Step 2. Run default pipeline for downloading
+        NbTravisDownloader.download_from_jenkins(outdir)
+    else:
+        shutil.copytree(sourcedir, outdir)
     # Step 3. Run processing on downloaded file
     nbp = NbProcessor(outdir)
-    buttons_list = nbp.fetch_binder_list('txt')
-    nbp.add_binder(buttons_list)
-    nbp.render_rst(outdir.joinpath(notebooks_docs))
+    buttons_list = nbp.fetch_binder_list('notebooks_with_binder_buttons.txt')
+    cbuttons_list = nbp.fetch_colab_list('notebooks_with_colab_buttons.txt')
+    nbp.add_binder(buttons_list, cbuttons_list)
 
 
 if __name__ == '__main__':

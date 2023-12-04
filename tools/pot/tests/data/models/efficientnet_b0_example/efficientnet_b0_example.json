@@ -1,0 +1,7 @@
+{
+  "name": "efficientnet_b0_example",
+  "framework": "pytorch",
+  "mo_args": {
+    "input_model": "$model_dir/efficientnet_b0_example/efficientnet_b0_example.onnx"
+  }
+}

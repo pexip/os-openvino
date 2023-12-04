@@ -1,0 +1,7 @@
+{
+  "name": "matmul_divide_const",
+  "framework": "tf",
+  "mo_args": {
+    "input_model": "$model_dir/matmul_divide_const/matmul_divide_const.pb"
+  }
+}

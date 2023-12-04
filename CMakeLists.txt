@@ -1,222 +1,166 @@
-# Copyright (C) 2018-2021 Intel Corporation
+# Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
-cmake_minimum_required(VERSION 3.13)
+if(DEFINED BUILD_SHARED_LIBS AND NOT BUILD_SHARED_LIBS)
+    # 3.17: 'target_link_libraries' does not work correctly when called from
+    # different directory where 'add_library' is called: CMake generates
+    # incorrect OpenVINOConfig.cmake in this case
+    # 3.18: add_library cannot create ALIAS for non-GLOBAL targets
+    cmake_minimum_required(VERSION 3.18)
+else()
+    if(CPACK_GENERATOR STREQUAL "DEB")
+        # we have to use CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS variable
+        cmake_minimum_required(VERSION 3.20)
+    else()
+        if(WIN32)
+            # 3.16: FindPython3.cmake can find Python via -DPython3_EXECUTABLE
+            # 3.18: FindPython3.cmake can find Python automatically from virtualenv
+            cmake_minimum_required(VERSION 3.16)
+        else()
+            # 3.13: default choice
+            cmake_minimum_required(VERSION 3.13)
+        endif()
+    endif()
+endif()
 
-project(OpenVINO)
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW) # Enables use of MSVC_RUNTIME_LIBRARY
+endif()
 
-set(OpenVINO_MAIN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(IE_MAIN_SOURCE_DIR ${OpenVINO_MAIN_SOURCE_DIR}/inference-engine)
+project(OpenVINO DESCRIPTION "OpenVINO toolkit")
 
-find_package(IEDevScripts REQUIRED
-             PATHS "${OpenVINO_MAIN_SOURCE_DIR}/cmake/developer_package"
+find_package(OpenVINODeveloperScripts REQUIRED
+             PATHS "${OpenVINO_SOURCE_DIR}/cmake/developer_package"
              NO_CMAKE_FIND_ROOT_PATH
              NO_DEFAULT_PATH)
 
-include(CTest)
 include(cmake/features.cmake)
 
 # These options are shared with 3rdparty plugins by means of developer package
 include(cmake/dependencies.cmake)
 
-# resolving dependencies for the project
-message (STATUS "PROJECT ............................... " ${PROJECT_NAME})
-message (STATUS "CMAKE_BINARY_DIR ...................... " ${CMAKE_BINARY_DIR})
-message (STATUS "OpenVINO_MAIN_SOURCE_DIR .............. " ${OpenVINO_MAIN_SOURCE_DIR})
-message (STATUS "IE_MAIN_SOURCE_DIR .................... " ${IE_MAIN_SOURCE_DIR})
-message (STATUS "CMAKE_GENERATOR ....................... " ${CMAKE_GENERATOR})
-message (STATUS "CMAKE_C_COMPILER_ID ................... " ${CMAKE_C_COMPILER_ID})
-message (STATUS "CMAKE_BUILD_TYPE ...................... " ${CMAKE_BUILD_TYPE})
+if(ENABLE_COVERAGE)
+    include(cmake/coverage.cmake)
+endif()
 
-# remove file with exported developer targets to force its regeneration
+# resolving dependencies for the project
+message (STATUS "CMAKE_VERSION ......................... " ${CMAKE_VERSION})
+message (STATUS "OpenVINO_SOURCE_DIR ................... " ${OpenVINO_SOURCE_DIR})
+message (STATUS "OpenVINO_BINARY_DIR ................... " ${OpenVINO_BINARY_DIR})
+message (STATUS "CMAKE_GENERATOR ....................... " ${CMAKE_GENERATOR})
+message (STATUS "CPACK_GENERATOR ....................... " ${CPACK_GENERATOR})
+message (STATUS "CMAKE_C_COMPILER_ID ................... " ${CMAKE_C_COMPILER_ID})
+message (STATUS "CMAKE_CXX_COMPILER_ID ................. " ${CMAKE_CXX_COMPILER_ID})
+message (STATUS "CMAKE_CXX_STANDARD .................... " ${CMAKE_CXX_STANDARD})
+if(OV_GENERATOR_MULTI_CONFIG)
+    string(REPLACE ";" " " config_types "${CMAKE_CONFIGURATION_TYPES}")
+    message (STATUS "CMAKE_CONFIGURATION_TYPES ............. " ${config_types})
+    unset(config_types)
+    if(CMAKE_GENERATOR MATCHES "^Ninja Multi-Config$")
+        message (STATUS "CMAKE_DEFAULT_BUILD_TYPE .............. " ${CMAKE_DEFAULT_BUILD_TYPE})
+    endif()
+else()
+    message (STATUS "CMAKE_BUILD_TYPE ...................... " ${CMAKE_BUILD_TYPE})
+endif()
+if(CMAKE_GENERATOR_PLATFORM)
+    message (STATUS "CMAKE_GENERATOR_PLATFORM .............. " ${CMAKE_GENERATOR_PLATFORM})
+endif()
+if(CMAKE_GENERATOR_TOOLSET)
+    message (STATUS "CMAKE_GENERATOR_TOOLSET ............... " ${CMAKE_GENERATOR_TOOLSET})
+endif()
+if(CMAKE_TOOLCHAIN_FILE)
+    message (STATUS "CMAKE_TOOLCHAIN_FILE .................. " ${CMAKE_TOOLCHAIN_FILE})
+endif()
+if(NOT OV_GLIBC_VERSION VERSION_EQUAL 0.0)
+    message (STATUS "GLIBC_VERSION ......................... " ${OV_GLIBC_VERSION})
+endif()
+
+# remove file with exported targets to force its regeneration
+file(REMOVE "${CMAKE_BINARY_DIR}/ngraphTargets.cmake")
 file(REMOVE "${CMAKE_BINARY_DIR}/InferenceEngineTargets.cmake")
-foreach(component IN LISTS openvino_export_components)
-    file(REMOVE "${CMAKE_BINARY_DIR}/${component}_dev_targets.cmake")
-    unset(${component} CACHE)
-endforeach()
+file(REMOVE "${CMAKE_BINARY_DIR}/OpenVINOTargets.cmake")
+
+# remove exported developer targets files to force its regeneration
+macro(ov_clean_developer_package_targets)
+    file(REMOVE "${CMAKE_BINARY_DIR}/inference_engine_developer_package_targets.cmake")
+    file(REMOVE "${CMAKE_BINARY_DIR}/openvino_developer_package_targets.cmake")
+    unset(_OPENVINO_DEVELOPER_PACKAGE_TARGETS CACHE)
+    unset(openvino_installed_targets CACHE)
+endmacro()
+ov_clean_developer_package_targets()
+
+function(ov_developer_package_export_targets)
+    cmake_parse_arguments(EXPORT "" "TARGET;INSTALL_DESTIONATION" "INSTALL_INCLUDE_DIRECTORIES" ${ARGN})
+
+    # to allow exporting of aliased targets with the original names
+    if(TARGET "${EXPORT_TARGET}")
+        get_target_property(original_name ${EXPORT_TARGET} ALIASED_TARGET)
+        if(TARGET "${original_name}")
+            # replace target with its original name
+            set(EXPORT_TARGET ${original_name})
+        endif()
+        list(APPEND _OPENVINO_DEVELOPER_PACKAGE_TARGETS ${EXPORT_TARGET})
+
+        if(EXPORT_INSTALL_INCLUDE_DIRECTORIES)
+            if(NOT EXPORT_INSTALL_DESTIONATION)
+                set(EXPORT_INSTALL_DESTIONATION "developer_package/include/${EXPORT_TARGET}")
+            endif()
+
+            target_include_directories(${EXPORT_TARGET} INTERFACE "$<INSTALL_INTERFACE:${EXPORT_INSTALL_DESTIONATION}>")
+
+            foreach(install_dir IN LISTS EXPORT_INSTALL_INCLUDE_DIRECTORIES)
+                install(DIRECTORY "${install_dir}"
+                        DESTINATION "${EXPORT_INSTALL_DESTIONATION}"
+                        COMPONENT developer_package EXCLUDE_FROM_ALL)
+            endforeach()
+        endif()
+    else()
+        message(FATAL_ERROR "Internal error: ${target_name} does not represent a cmake target")
+    endif()
+
+    list(REMOVE_DUPLICATES _OPENVINO_DEVELOPER_PACKAGE_TARGETS)
+    set(_OPENVINO_DEVELOPER_PACKAGE_TARGETS "${_OPENVINO_DEVELOPER_PACKAGE_TARGETS}" CACHE INTERNAL
+        "A list of OpenVINO Developer Package exported targets" FORCE)
+endfunction()
 
 #
 # Build
 #
 
-function(build_ngraph)
-    function(ngraph_set option value)
-        if(NOT DEFINED ${option})
-            set(${option} ${value} CACHE BOOL "" FORCE)
-        endif()
-    endfunction()
+if(ENABLE_TESTS)
+    # add target with processed tests model zoo
+    include(cmake/test_model_zoo.cmake)
+endif()
 
-    if (ENABLE_SANITIZER)
-        ngraph_set(NGRAPH_ADDRESS_SANITIZER ON)
-    else ()
-        ngraph_set(NGRAPH_ADDRESS_SANITIZER OFF)
-    endif ()
+include(thirdparty/dependencies.cmake)
+add_subdirectory(src)
 
-    if(ENABLE_TESTS AND NOT ANDROID)
-        ngraph_set(NGRAPH_UNIT_TEST_ENABLE ON)
-    else()
-        ngraph_set(NGRAPH_UNIT_TEST_ENABLE OFF)
-    endif()
+if(ENABLE_SAMPLES OR ENABLE_TESTS)
+    add_subdirectory(samples)
+endif()
 
-    if(NOT (ANDROID OR WINDOWS_STORE OR (MSVC AND (ARM OR AARCH64)) ))
-        ngraph_set(NGRAPH_ONNX_IMPORT_ENABLE ON)
-    else()
-        ngraph_set(NGRAPH_ONNX_IMPORT_ENABLE OFF)
-    endif()
-    ngraph_set(NGRAPH_INTERPRETER_ENABLE ON)
+# Enable interpreter backend for tests
+if(ENABLE_TESTS OR ENABLE_TEMPLATE)
+    add_subdirectory(src/plugins/template/backend)
+endif()
 
-    if(TREAT_WARNING_AS_ERROR)
-        ngraph_set(NGRAPH_WARNINGS_AS_ERRORS ON)
-    else()
-        ngraph_set(NGRAPH_WARNINGS_AS_ERRORS OFF)
-    endif()
-
-    if(ENABLE_SANITIZER)
-        ngraph_set(NGRAPH_ADDRESS_SANITIZER_ENABLE ON)
-    else()
-        ngraph_set(NGRAPH_ADDRESS_SANITIZER_ENABLE OFF)
-    endif()
-
-    if(ENABLE_THREAD_SANITIZER)
-        ngraph_set(NGRAPH_THREAD_SANITIZER_ENABLE ON)
-    else()
-        ngraph_set(NGRAPH_THREAD_SANITIZER_ENABLE OFF)
-    endif()
-
-    if(ENABLE_PYTHON)
-        ngraph_set(NGRAPH_PYTHON_BUILD_ENABLE ON)
-    else()
-        ngraph_set(NGRAPH_PYTHON_BUILD_ENABLE OFF)
-    endif()
-
-    if(OV_COMPILER_IS_CLANG)
-        ie_add_compiler_flags(-Wno-error=uninitialized -Wno-error=literal-conversion)
-    elseif(UNIX)
-        ie_add_compiler_flags(-Wno-error=maybe-uninitialized -Wno-error=return-type)
-    endif()
-
-    # WA for GCC 7.0
-    if (UNIX)
-        ie_add_compiler_flags(-Wno-error=return-type -Wno-undef)
-    elseif(WIN32)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4308 /wd4146 /wd4703 /wd4244 /wd4819")
-    endif()
-
-    if(ENABLE_LTO)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
-    endif()
-
-    ie_cpack_add_component(ngraph REQUIRED)
-    ie_cpack_add_component(ngraph_dev REQUIRED DEPENDS ngraph)
-
-    set(SDL_cmake_included ON)
-    add_subdirectory(ngraph)
-    set(NGRAPH_LIBRARIES ngraph PARENT_SCOPE)
-    set(NGRAPH_REF_LIBRARIES ngraph_reference PARENT_SCOPE)
-endfunction()
-
-function(openvino_developer_export_targets)
-    cmake_parse_arguments(EXPORT "" "COMPONENT" "TARGETS" ${ARGN})
-
-    if(EXPORT_UNPARSED_ARGUMENTS)
-        message(FATAL_ERROR "openvino_developer_export_targets has unparsed arguments: ${EXPORT_UNPARSED_ARGUMENTS}")
-    endif()
-
-    set(${EXPORT_COMPONENT} "${${EXPORT_COMPONENT}};${EXPORT_TARGETS}")
-
-    # to allow exporting of aliased targets with the original names
-    foreach(target_name IN LISTS ${EXPORT_COMPONENT})
-        if(TARGET "${target_name}")
-            get_target_property(original_name ${target_name} ALIASED_TARGET)
-            if(TARGET "${original_name}")
-                message(STATUS "The name ${target_name} is an ALIAS for ${original_name}. "
-                        "It will be exported to the InferenceEngineDeveloperPackage with the original name.")
-                list(REMOVE_ITEM ${EXPORT_COMPONENT} ${target_name})
-                list(APPEND ${EXPORT_COMPONENT} ${original_name})
-            endif()
-        endif()
-    endforeach()
-
-    list(REMOVE_DUPLICATES ${EXPORT_COMPONENT})
-    set(${EXPORT_COMPONENT} "${${EXPORT_COMPONENT}}" CACHE INTERNAL
-        "A list of OpenVINO ${EXPORT_COMPONENT} exported targets" FORCE)
-
-    list(APPEND openvino_export_components ${EXPORT_COMPONENT})
-    list(REMOVE_DUPLICATES openvino_export_components)
-    set(openvino_export_components "${openvino_export_components}" CACHE INTERNAL
-        "A list of OpenVINO exported components" FORCE)
-endfunction()
-
-add_subdirectory(thirdparty)
-add_subdirectory(openvino)
-build_ngraph()
-add_subdirectory(inference-engine)
-add_subdirectory(model-optimizer)
+include(cmake/extra_modules.cmake)
 add_subdirectory(docs)
 add_subdirectory(tools)
+add_subdirectory(scripts)
+add_subdirectory(licensing)
 
-#
-# Shellcheck
-#
-
-ie_shellcheck_process(DIRECTORY "${OpenVINO_MAIN_SOURCE_DIR}"
-                      SKIP "${OpenVINO_MAIN_SOURCE_DIR}/bin"
-                           "${OpenVINO_MAIN_SOURCE_DIR}/build"
-                           "${OpenVINO_MAIN_SOURCE_DIR}/thirdparty"
-                           "${IE_MAIN_SOURCE_DIR}/tests/ie_test_utils/common_test_utils/gtest"
-                           "${IE_MAIN_SOURCE_DIR}/samples/thirdparty"
-                           "${IE_MAIN_SOURCE_DIR}/thirdparty"
-                           "${IE_MAIN_SOURCE_DIR}/temp"
-                           # TODO fix and enable back:
-                           "${OpenVINO_MAIN_SOURCE_DIR}/scripts/install_dependencies"
-                           "${OpenVINO_MAIN_SOURCE_DIR}/scripts/demo"
-                           "${OpenVINO_MAIN_SOURCE_DIR}/ngraph"
-                           "${IE_MAIN_SOURCE_DIR}/scripts")
-
-#
-# cpack
-#
-
-# install setupvars
-
-ie_cpack_add_component(setupvars REQUIRED)
-
-if(UNIX)
-    install(PROGRAMS scripts/setupvars/setupvars.sh
-            DESTINATION bin
-            COMPONENT setupvars)
-elseif(WIN32)
-    install(PROGRAMS scripts/setupvars/setupvars.bat
-            DESTINATION bin
-            COMPONENT setupvars)
+if(ENABLE_TESTS)
+    # layers and other more high-level / e2e tests
+    add_subdirectory(tests)
 endif()
 
-# install install_dependencies
+#
+# CPack
+#
 
-if(UNIX)
-    ie_cpack_add_component(install_dependencies REQUIRED)
-    install(DIRECTORY scripts/install_dependencies/
-            DESTINATION install_dependencies
-            COMPONENT install_dependencies)
-endif()
+# provides a callback function to describe each component in repo
+include(cmake/packaging/packaging.cmake)
 
-# install files for demo
-
-ie_cpack_add_component(demo_scripts DEPENDS core)
-
-if(UNIX)
-    install(DIRECTORY scripts/demo/
-            DESTINATION deployment_tools/demo
-            COMPONENT demo_scripts
-            USE_SOURCE_PERMISSIONS
-            PATTERN *.bat EXCLUDE)
-elseif(WIN32)
-    install(DIRECTORY scripts/demo/
-            DESTINATION deployment_tools/demo
-            COMPONENT demo_scripts
-            USE_SOURCE_PERMISSIONS
-            PATTERN *.sh EXCLUDE)
-endif()
-
-ie_cpack(${IE_CPACK_COMPONENTS_ALL})
+ov_cpack(${OV_CPACK_COMPONENTS_ALL})

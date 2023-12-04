@@ -1,0 +1,7 @@
+{
+    "name": "lstm_outs_quantization",
+    "framework": "tf",
+    "mo_args": {
+      "input_model": "$model_dir/lstm_outs_quantization/lstm_outs_quantization.pb"
+    }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "scaleshift_no_fuse_1",
+  "framework": "pytorch",
+  "mo_args": {
+    "input_model": "$model_dir/scaleshift_fuse/scaleshift_no_fuse_1.onnx"
+  }
+}
