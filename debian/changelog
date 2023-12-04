@@ -1,3 +1,9 @@
+openvino (2023.2.0+repack1-0pexip1) pexip-bookworm; urgency=medium
+
+  * Update to 2023.2.0 release.
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Mon, 04 Dec 2023 15:10:11 +0000
+
 openvino (2021.4.2+repack1-0pexip8) pexip-bookworm; urgency=medium
 
   * Initial bookworm build

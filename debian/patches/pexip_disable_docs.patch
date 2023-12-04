@@ -1,0 +1,13 @@
+Index: os-openvino/CMakeLists.txt
+===================================================================
+--- os-openvino.orig/CMakeLists.txt
++++ os-openvino/CMakeLists.txt
+@@ -146,7 +146,7 @@ if(ENABLE_TESTS OR ENABLE_TEMPLATE)
+ endif()
+ 
+ include(cmake/extra_modules.cmake)
+-add_subdirectory(docs)
++#add_subdirectory(docs)
+ add_subdirectory(tools)
+ add_subdirectory(scripts)
+ add_subdirectory(licensing)
