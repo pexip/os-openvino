@@ -1,0 +1,731 @@
+<?xml version="1.0" ?>
+<net name="TensorFlow_Frontend_IR" version="11">
+	<layers>
+		<layer id="29" name="decoder_0" type="Parameter" version="opset1">
+			<data shape="1,16,512" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="decoder_0,decoder_0:0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+					<rt_info/>
+				</port>
+			</output>
+		</layer>
+		<layer id="0" name="117121646" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="1" name="118122622" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="2" name="119123652" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="3" name="120124610" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="4" name="97101637" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="5" name="98102658" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="6" name="99103619" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="7" name="100104595" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="8" name="Constant_142943664" type="Const" version="opset1">
+			<data offset="4" size="4" shape="1,1,1" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="9" name="Multiply_1431/fq_weights_1" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="10" name="Reshape_3/shape41679" type="Const" version="opset1">
+			<data offset="8" size="12" shape="3" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="Reshape_3/shape,Reshape_3/shape:0">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="11" name="289293682" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="12" name="290294607" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="13" name="291295598" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="14" name="292296673" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="15" name="157161616" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="16" name="158162589" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="17" name="159163667" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="18" name="160164661" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="19" name="Const_439649" type="Const" version="opset1">
+			<data offset="20" size="1048576" shape="8,64,512" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="Const_4,Const_4:0">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="20" name="MatMul_1/fq_weights_1" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="21" name="Reshape_1/shape33580" type="Const" version="opset1">
+			<data offset="1048596" size="12" shape="3" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="Reshape_1/shape,Reshape_1/shape:0">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="22" name="Constant_1331676" type="Const" version="opset1">
+			<data offset="1048608" size="4" shape="1" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="23" name="Const_229574" type="Const" version="opset1">
+			<data offset="1048612" size="16" shape="4" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="Const_2,Const_2:0">
+					<dim>4</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="24" name="ExpandDims_1/dim27592" type="Const" version="opset1">
+			<data offset="1048608" size="4" shape="" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="ExpandDims_1/dim,ExpandDims_1/dim:0"/>
+			</output>
+		</layer>
+		<layer id="25" name="239243601" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="26" name="240244643" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="27" name="241245670" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="28" name="242246583" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="30" name="Const25685" type="Const" version="opset1">
+			<data offset="1048628" size="32768" shape="1,16,512" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="Const,Const:0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="31" name="Add" type="Add" version="opset1">
+			<data auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Add,Add:0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="32" name="ExpandDims_1/fq_input_0" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="33" name="ExpandDims_1" type="Unsqueeze" version="opset1">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1"/>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="ExpandDims,ExpandDims:0,ExpandDims_1,ExpandDims_1:0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="34" name="Tile_1" type="Tile" version="opset1">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+					<dim>1</dim>
+				</port>
+				<port id="1">
+					<dim>4</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Tile,Tile:0,Tile_1,Tile_1:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="35" name="Squeeze_1" type="Squeeze" version="opset1">
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+					<dim>1</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Squeeze,Squeeze:0,Squeeze_1,Squeeze_1:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="36" name="Reshape_1" type="Reshape" version="opset1">
+			<data special_zero="false"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1">
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Reshape,Reshape:0,Reshape_1,Reshape_1:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="37" name="MatMul_1" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="MatMul_1,MatMul_1:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="38" name="Reshape_3/fq_input_0" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="39" name="Reshape_3" type="Reshape" version="opset1">
+			<data special_zero="false"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1">
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Reshape_3,Reshape_3:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="40" name="Multiply_1431" type="Multiply" version="opset1">
+			<data auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="41" name="output/fq_input_1" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="42" name="Reshape_2/shape37586" type="Const" version="opset1">
+			<data offset="8" size="12" shape="3" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="Reshape_2/shape,Reshape_2/shape:0">
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="43" name="299303577" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="44" name="300304655" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="45" name="301305613" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="46" name="302306640" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="47" name="137141625" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="48" name="138142628" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="49" name="139143634" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="50" name="140144631" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="51" name="Const_335604" type="Const" version="opset1">
+			<data offset="1081396" size="1048576" shape="8,64,512" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="Const_3,Const_3:0">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="52" name="MatMul/fq_weights_1" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="53" name="MatMul" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>512</dim>
+				</port>
+				<port id="1">
+					<dim>8</dim>
+					<dim>64</dim>
+					<dim>512</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="MatMul,MatMul:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="54" name="Reshape_2/fq_input_0" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="55" name="Reshape_2" type="Reshape" version="opset1">
+			<data special_zero="false"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1">
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Reshape_2,Reshape_2:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="56" name="output" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true"/>
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="output,output:0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>16</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="57" name="output:0" type="Result" version="opset1">
+			<input>
+				<port id="0">
+					<dim>8</dim>
+					<dim>16</dim>
+					<dim>16</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="8" from-port="0" to-layer="9" to-port="0"/>
+		<edge from-layer="4" from-port="0" to-layer="9" to-port="1"/>
+		<edge from-layer="5" from-port="0" to-layer="9" to-port="2"/>
+		<edge from-layer="6" from-port="0" to-layer="9" to-port="3"/>
+		<edge from-layer="7" from-port="0" to-layer="9" to-port="4"/>
+		<edge from-layer="19" from-port="0" to-layer="20" to-port="0"/>
+		<edge from-layer="15" from-port="0" to-layer="20" to-port="1"/>
+		<edge from-layer="16" from-port="0" to-layer="20" to-port="2"/>
+		<edge from-layer="17" from-port="0" to-layer="20" to-port="3"/>
+		<edge from-layer="18" from-port="0" to-layer="20" to-port="4"/>
+		<edge from-layer="29" from-port="0" to-layer="31" to-port="0"/>
+		<edge from-layer="30" from-port="0" to-layer="31" to-port="1"/>
+		<edge from-layer="31" from-port="2" to-layer="32" to-port="0"/>
+		<edge from-layer="25" from-port="0" to-layer="32" to-port="1"/>
+		<edge from-layer="26" from-port="0" to-layer="32" to-port="2"/>
+		<edge from-layer="27" from-port="0" to-layer="32" to-port="3"/>
+		<edge from-layer="28" from-port="0" to-layer="32" to-port="4"/>
+		<edge from-layer="32" from-port="5" to-layer="33" to-port="0"/>
+		<edge from-layer="24" from-port="0" to-layer="33" to-port="1"/>
+		<edge from-layer="33" from-port="2" to-layer="34" to-port="0"/>
+		<edge from-layer="23" from-port="0" to-layer="34" to-port="1"/>
+		<edge from-layer="34" from-port="2" to-layer="35" to-port="0"/>
+		<edge from-layer="22" from-port="0" to-layer="35" to-port="1"/>
+		<edge from-layer="35" from-port="2" to-layer="36" to-port="0"/>
+		<edge from-layer="21" from-port="0" to-layer="36" to-port="1"/>
+		<edge from-layer="36" from-port="2" to-layer="37" to-port="0"/>
+		<edge from-layer="20" from-port="5" to-layer="37" to-port="1"/>
+		<edge from-layer="37" from-port="2" to-layer="38" to-port="0"/>
+		<edge from-layer="11" from-port="0" to-layer="38" to-port="1"/>
+		<edge from-layer="12" from-port="0" to-layer="38" to-port="2"/>
+		<edge from-layer="13" from-port="0" to-layer="38" to-port="3"/>
+		<edge from-layer="14" from-port="0" to-layer="38" to-port="4"/>
+		<edge from-layer="38" from-port="5" to-layer="39" to-port="0"/>
+		<edge from-layer="10" from-port="0" to-layer="39" to-port="1"/>
+		<edge from-layer="39" from-port="2" to-layer="40" to-port="0"/>
+		<edge from-layer="9" from-port="5" to-layer="40" to-port="1"/>
+		<edge from-layer="40" from-port="2" to-layer="41" to-port="0"/>
+		<edge from-layer="0" from-port="0" to-layer="41" to-port="1"/>
+		<edge from-layer="1" from-port="0" to-layer="41" to-port="2"/>
+		<edge from-layer="2" from-port="0" to-layer="41" to-port="3"/>
+		<edge from-layer="3" from-port="0" to-layer="41" to-port="4"/>
+		<edge from-layer="51" from-port="0" to-layer="52" to-port="0"/>
+		<edge from-layer="47" from-port="0" to-layer="52" to-port="1"/>
+		<edge from-layer="48" from-port="0" to-layer="52" to-port="2"/>
+		<edge from-layer="49" from-port="0" to-layer="52" to-port="3"/>
+		<edge from-layer="50" from-port="0" to-layer="52" to-port="4"/>
+		<edge from-layer="36" from-port="2" to-layer="53" to-port="0"/>
+		<edge from-layer="52" from-port="5" to-layer="53" to-port="1"/>
+		<edge from-layer="53" from-port="2" to-layer="54" to-port="0"/>
+		<edge from-layer="43" from-port="0" to-layer="54" to-port="1"/>
+		<edge from-layer="44" from-port="0" to-layer="54" to-port="2"/>
+		<edge from-layer="45" from-port="0" to-layer="54" to-port="3"/>
+		<edge from-layer="46" from-port="0" to-layer="54" to-port="4"/>
+		<edge from-layer="54" from-port="5" to-layer="55" to-port="0"/>
+		<edge from-layer="42" from-port="0" to-layer="55" to-port="1"/>
+		<edge from-layer="55" from-port="2" to-layer="56" to-port="0"/>
+		<edge from-layer="41" from-port="5" to-layer="56" to-port="1"/>
+		<edge from-layer="56" from-port="2" to-layer="57" to-port="0"/>
+	</edges>
+	<rt_info>
+		<MO_version value="custom_nm/pot_ci_update_92c3ca1425094b2acc1936e8528827939e99bf76"/>
+		<Runtime_version value="2023.2.0-12165-80b8b6fff1b-HEAD"/>
+		<conversion_parameters>
+			<input_model value="DIR/matmul_divide_const.pb"/>
+			<is_python_api_used value="False"/>
+			<model_name value="matmul_divide_const"/>
+			<output_dir value="DIR"/>
+		</conversion_parameters>
+		<legacy_frontend value="False"/>
+	</rt_info>
+	<quantization_parameters>
+		<config/>
+		<version value="{}"/>
+		<cli_params value="{}"/>
+	</quantization_parameters>
+</net>

@@ -1,0 +1,8 @@
+{
+    "name": "multiple_outputs_net_example",
+    "framework": "tf",
+    "mo_args": {
+      "input_model": "$model_dir/multiple_outputs_net_example/multiple_outputs_net_example.pb",
+      "input_shape": "[1,1,128]"
+    }
+  }

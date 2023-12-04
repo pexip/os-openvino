@@ -1,0 +1,7 @@
+{
+  "name": "concat_depthwise_model",
+  "framework": "pytorch",
+  "mo_args": {
+    "input_model": "$model_dir/concat_depthwise_model/concat_depthwise_model.onnx"
+  }
+}

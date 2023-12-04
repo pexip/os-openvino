@@ -1,60 +1,19 @@
-# Copyright (C) 2018-2021 Intel Corporation
+# Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
-if(NOT ENABLE_DOCKER)
-    if(CMAKE_COMPILER_IS_GNUCXX)
-        ie_add_compiler_flags(-Wall)
-    endif()
-
-    add_subdirectory(snippets)
-
-    # Detect nGraph
-    find_package(ngraph QUIET
-                 PATHS "${CMAKE_BINARY_DIR}/ngraph"
-                 NO_DEFAULT_PATH)
-    if(NOT ngraph_FOUND)
-        set(ngraph_DIR ${CMAKE_BINARY_DIR}/ngraph)
-    endif()
-
-    # Detect InferenceEngine
-    find_package(InferenceEngine QUIET
-                 PATHS "${CMAKE_BINARY_DIR}"
-                 NO_DEFAULT_PATH)
-    if(NOT InferenceEngine_FOUND)
-        set(InferenceEngine_DIR ${CMAKE_BINARY_DIR})
-    endif()
-
-    if (NGRAPH_ONNX_IMPORT_ENABLE)
-        add_subdirectory(onnx_custom_op)
-    endif()
-    add_subdirectory(template_extension)
-
-    set(all_docs_targets
-        ie_docs_snippets
-        template_extension
-        templatePlugin TemplateBehaviorTests TemplateFunctionalTests)
-    foreach(target_name IN LISTS all_docs_targets)
-        if (TARGET ${target_name})
-            set_target_properties(${target_name} PROPERTIES FOLDER docs)
-            if(WIN32)
-                set_target_properties(${target_name} PROPERTIES COMPILE_PDB_NAME ${target_name})
-            endif()
-        endif()
-    endforeach()
-endif()
+add_subdirectory(snippets)
 
 set(LINKCHECKER_PY "" CACHE FILEPATH "Path to linkchecker.py for documentation check dir.")
+set(ENABLE_OPENVINO_NOTEBOOKS OFF CACHE BOOL "Build with openvino notebooks")
 set(OMZ_DOCS_DIR "" CACHE PATH "Path to open_model_zoo documentation dir.")
+set(OTE_DOCS_DIR "" CACHE PATH "Path to training_extensions documentation dir.")
 set(WORKBENCH_DOCS_DIR "" CACHE PATH "Path to workbench documentation dir.")
-set(POT_DOCS_DIR "" CACHE PATH "Path to post-training-compression-tool documentation dir.")
-set(GST_DOCS_DIR "" CACHE PATH "Path to gst-video-analytics documentation dir.")
-set(GITHUB_API_TOKEN "" CACHE PATH "Path to file containing github api token.")
+set(OVMS_DOCS_DIR "" CACHE PATH "Path to model server documentation dir.")
 set(GRAPH_CSV_DIR "" CACHE PATH "Path to the folder containing csv data for rendering graphs.")
 
 function(build_docs)
     find_package(Doxygen REQUIRED dot)
-    find_package(PythonInterp 3 REQUIRED)
     find_package(LATEX REQUIRED)
 
     find_program(DOXYREST_EXECUTABLE NAMES doxyrest)
@@ -63,32 +22,19 @@ function(build_docs)
     endif()
 
     set(DOCS_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-    set(DOCS_SOURCE_DIR "${OpenVINO_MAIN_SOURCE_DIR}/docs")
-    set(DOXYGEN_DIR "${DOCS_SOURCE_DIR}/doxygen")
-
-    # API INPUT
-
-    set(NGRAPH_DIR "${OpenVINO_MAIN_SOURCE_DIR}/ngraph")
+    set(DOCS_SOURCE_DIR "${OpenVINO_SOURCE_DIR}/docs")
+    set(SCRIPTS_DIR "${DOCS_SOURCE_DIR}/scripts")
 
     # markdown docs
     set(MARKDOWN_INPUT "${DOCS_BUILD_DIR}")
-    
-    # IE C++ API
-    set(IE_SOURCE_DIR "${OpenVINO_MAIN_SOURCE_DIR}/inference-engine")
-    
-    # IE C API
-    set(IE_C_API "${IE_SOURCE_DIR}/ie_bridges/c/include")
-    
+
     # Preprocessing scripts
-    set(DOXY_MD_FILTER "${DOXYGEN_DIR}/doxy_md_filter.py")
-    set(PYNGRAPH_REF_SCRIPT "${DOXYGEN_DIR}/pyngraph_ref.py")
-    set(DOXY_LOG_SCRIPT "${DOXYGEN_DIR}/log.py")
-    set(PYX_FILTER "${DOXYGEN_DIR}/pyx_filter.py")
-    set(PREPARE_XML_SCRIPT "${DOXYGEN_DIR}/prepare_xml.py")
-    set(REMOVE_XML_SCRIPT "${DOXYGEN_DIR}/remove_xml.py")
-    set(COPY_IMAGES_SCRIPT "${DOXYGEN_DIR}/copy_images.py")
-    set(DOXYGEN_MAPPING_SCRIPT "${DOXYGEN_DIR}/create_mapping.py")
-    set(DOXYGEN_MAPPING_FILE "${DOCS_BUILD_DIR}/mapping.json")
+    set(DOXY_MD_FILTER "${SCRIPTS_DIR}/doxy_md_filter.py")
+    set(PREPARE_XML_SCRIPT "${SCRIPTS_DIR}/prepare_xml.py")
+    set(REMOVE_XML_SCRIPT "${SCRIPTS_DIR}/remove_xml.py")
+    set(COPY_IMAGES_SCRIPT "${SCRIPTS_DIR}/copy_images.py")
+    set(DOC_TEST_DIR "${SCRIPTS_DIR}/tests")
+    set(DOXYGEN_MAPPING_SCRIPT "${SCRIPTS_DIR}/create_mapping.py")
 
     # out dirs
     set(XML_OUTPUT "${DOCS_BUILD_DIR}/xml")
@@ -97,6 +43,8 @@ function(build_docs)
 
     # Sphinx folders, doxyrest templates and config
     set(SPHINX_CONF_IN "${DOCS_SOURCE_DIR}/conf.py")
+    set(SPHINX_TEMPLATES_IN "${DOCS_SOURCE_DIR}/_templates")
+    set(SPHINX_TEMPLATES_OUT "${RST_OUTPUT}/_templates")
     set(SPHINX_CONF_OUT "${RST_OUTPUT}/conf.py")
     set(SPHINX_STATIC_IN "${DOCS_SOURCE_DIR}/_static")
     set(SPHINX_STATIC_OUT "${RST_OUTPUT}/_static")
@@ -114,39 +62,43 @@ function(build_docs)
     configure_file(${SPHINX_CONF_IN} ${SPHINX_CONF_OUT} @ONLY)
 
     # Doxygen config
-    set(DOXYFILE_SOURCE "${DOXYGEN_DIR}/Doxyfile.config")
+    set(DOXYFILE_SOURCE "${DOCS_SOURCE_DIR}/Doxyfile.config")
     set(DOXYFILE_BUILD "${DOCS_BUILD_DIR}/Doxyfile.config")
     configure_file(${DOXYFILE_SOURCE} ${DOXYFILE_BUILD} @ONLY)
 
-    list(APPEND commands COMMAND ${PYTHON_EXECUTABLE} ${DOXY_MD_FILTER}
-        --input_dir=${OpenVINO_MAIN_SOURCE_DIR}
+    list(APPEND commands COMMAND ${Python3_EXECUTABLE} ${DOXY_MD_FILTER}
+        --input_dir=${OpenVINO_SOURCE_DIR}
         --output_dir=${DOCS_BUILD_DIR}/openvino
-        --exclude_dir=${CMAKE_CURRENT_BINARY_DIR}
-        --exclude_dir=${OpenVINO_MAIN_SOURCE_DIR}/out)
+        --exclude_dir=${DOCS_BUILD_DIR})
 
     # include additional repositories
 
-    # openvino notebooks dir
-    if(GITHUB_API_TOKEN)
+    # build with openvino notebooks
+    if(ENABLE_OPENVINO_NOTEBOOKS)
         set(NBDOC_SCRIPT "${DOCS_SOURCE_DIR}/nbdoc/nbdoc.py")
-        list(APPEND commands
-            COMMAND ${PYTHON_EXECUTABLE} "${NBDOC_SCRIPT}" "${GITHUB_API_TOKEN}" "${RST_OUTPUT}/notebooks"
+        list(PREPEND commands
+            COMMAND ${Python3_EXECUTABLE} "${NBDOC_SCRIPT}" "${DOCS_SOURCE_DIR}/notebooks" "${RST_OUTPUT}/notebooks"
         )
     endif()
 
     if(GRAPH_CSV_DIR)
         set(GRAPH_CSV_DIR_OUT "${RST_OUTPUT}/csv")
-    list(APPEND commands
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${GRAPH_CSV_DIR}" "${GRAPH_CSV_DIR_OUT}"
-    )
+        list(APPEND commands
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${GRAPH_CSV_DIR}" "${GRAPH_CSV_DIR_OUT}"
+        )
     endif()
+
+    list(APPEND commands
+        COMMAND ${CMAKE_COMMAND} -E copy ${API_DOCS_IN}/api_reference.rst ${API_DOCS_OUT}/api_reference.rst
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${API_DOCS_IN}/ie_python_api ${API_DOCS_OUT}/ie_python_api
+    )
 
     # omz doc files
     if(EXISTS "${OMZ_DOCS_DIR}")
         get_filename_component(OMZ_DOCS_DIR "${OMZ_DOCS_DIR}" ABSOLUTE)
         list(APPEND commands
-        COMMAND ${PYTHON_EXECUTABLE} ${OMZ_DOCS_DIR}/ci/prepare-documentation.py ${CMAKE_BINARY_DIR}/open_model_zoo)
-        list(APPEND commands COMMAND ${PYTHON_EXECUTABLE} ${DOXY_MD_FILTER}
+        COMMAND ${Python3_EXECUTABLE} ${OMZ_DOCS_DIR}/ci/prepare-documentation.py ${CMAKE_BINARY_DIR}/open_model_zoo)
+        list(APPEND commands COMMAND ${Python3_EXECUTABLE} ${DOXY_MD_FILTER}
             --input_dir=${CMAKE_BINARY_DIR}/open_model_zoo
             --output_dir=${DOCS_BUILD_DIR}/open_model_zoo)
     endif()
@@ -155,26 +107,27 @@ function(build_docs)
     if(EXISTS "${WORKBENCH_DOCS_DIR}")
         get_filename_component(WORKBENCH_DOCS_DIR "${WORKBENCH_DOCS_DIR}" ABSOLUTE)
 
-        list(APPEND commands COMMAND ${PYTHON_EXECUTABLE} ${DOXY_MD_FILTER}
+        list(APPEND commands COMMAND ${Python3_EXECUTABLE} ${DOXY_MD_FILTER}
             --input_dir=${WORKBENCH_DOCS_DIR}
             --output_dir=${DOCS_BUILD_DIR}/workbench)
     endif()
 
-    # pot doc files
-    if(EXISTS "${POT_DOCS_DIR}")
-        get_filename_component(POT_DOCS_DIR "${POT_DOCS_DIR}" ABSOLUTE)
+    # ote doc files
+    if(EXISTS "${OTE_DOCS_DIR}")
+        get_filename_component(WORKBENCH_DOCS_DIR "${OTE_DOCS_DIR}" ABSOLUTE)
 
-        list(APPEND commands COMMAND ${PYTHON_EXECUTABLE} ${DOXY_MD_FILTER}
-        --input_dir=${POT_DOCS_DIR}
-        --output_dir=${DOCS_BUILD_DIR}/pot)
+        list(APPEND commands COMMAND ${Python3_EXECUTABLE} ${DOXY_MD_FILTER}
+            --input_dir=${OTE_DOCS_DIR}
+            --output_dir=${DOCS_BUILD_DIR}/ote)
     endif()
 
-    # gst doc files
-    if(EXISTS "${GST_DOCS_DIR}")
-        get_filename_component(GST_DOCS_DIR "${GST_DOCS_DIR}" ABSOLUTE)
-        list(APPEND commands COMMAND ${PYTHON_EXECUTABLE} ${DOXY_MD_FILTER}
-        --input_dir=${GST_DOCS_DIR}
-        --output_dir=${DOCS_BUILD_DIR}/gst)
+    # ovms doc files
+    if(EXISTS "${OVMS_DOCS_DIR}")
+        get_filename_component(OVMS_DOCS_DIR "${OVMS_DOCS_DIR}" ABSOLUTE)
+
+        list(APPEND commands COMMAND ${Python3_EXECUTABLE} ${DOXY_MD_FILTER}
+            --input_dir=${OVMS_DOCS_DIR}
+            --output_dir=${DOCS_BUILD_DIR}/ovms)
     endif()
 
     add_custom_target(preprocess_docs
@@ -191,7 +144,7 @@ function(build_docs)
 
     add_custom_target(doxygen_xml
                       DEPENDS preprocess_docs
-                      COMMAND ${PYTHON_EXECUTABLE} ${REMOVE_XML_SCRIPT} ${XML_OUTPUT}
+                      COMMAND ${Python3_EXECUTABLE} ${REMOVE_XML_SCRIPT} ${XML_OUTPUT}
                       COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_BUILD}
                       WORKING_DIRECTORY ${DOCS_BUILD_DIR}
                       COMMENT "Generate doxygen XML output"
@@ -200,13 +153,13 @@ function(build_docs)
     # Post-process docs
     add_custom_command(TARGET doxygen_xml
                        POST_BUILD
-                       COMMAND ${PYTHON_EXECUTABLE} ${PREPARE_XML_SCRIPT} ${XML_OUTPUT}
+                       COMMAND ${Python3_EXECUTABLE} ${PREPARE_XML_SCRIPT} ${XML_OUTPUT}
                        COMMAND ${CMAKE_COMMAND} -E copy_directory ${DOXYREST_IN} ${DOXYREST_OUT}
                        COMMAND ${DOXYREST_EXECUTABLE} -c ${DOXYREST_CONFIG_OUT}
-                       COMMAND ${PYTHON_EXECUTABLE} ${COPY_IMAGES_SCRIPT} ${XML_OUTPUT} ${RST_OUTPUT}
-                       COMMAND ${PYTHON_EXECUTABLE} ${DOXYGEN_MAPPING_SCRIPT} ${XML_OUTPUT} ${DOCS_BUILD_DIR} ${OpenVINO_MAIN_SOURCE_DIR}/../
+                       COMMAND ${Python3_EXECUTABLE} ${COPY_IMAGES_SCRIPT} ${XML_OUTPUT} ${RST_OUTPUT}
+                       COMMAND ${Python3_EXECUTABLE} ${DOXYGEN_MAPPING_SCRIPT} ${XML_OUTPUT} ${DOCS_BUILD_DIR} ${OpenVINO_SOURCE_DIR}/../
                        COMMAND ${CMAKE_COMMAND} -E copy ${SPHINX_INDEX_IN} ${SPHINX_INDEX_OUT}
-                       COMMAND ${CMAKE_COMMAND} -E copy_directory ${API_DOCS_IN} ${API_DOCS_OUT}
+                       COMMAND ${CMAKE_COMMAND} -E copy_directory ${SPHINX_TEMPLATES_IN} ${SPHINX_TEMPLATES_OUT}
                        COMMAND ${CMAKE_COMMAND} -E copy_directory ${DOXYREST_IN} ${DOXYREST_OUT}
                        COMMAND ${CMAKE_COMMAND} -E copy_directory ${DOXYREST_SPHINX_IN} ${DOXYREST_SPHINX_OUT}
                        COMMAND ${CMAKE_COMMAND} -E copy_directory ${SPHINX_STATIC_IN} ${SPHINX_STATIC_OUT}
@@ -215,12 +168,7 @@ function(build_docs)
 
     add_custom_target(sphinx_docs
                       DEPENDS doxygen_xml
-                      COMMAND sphinx-build -b html ${RST_OUTPUT} ${SPHINX_OUTPUT}
-                      WORKING_DIRECTORY ${RST_OUTPUT}
-                      VERBATIM)
-
-    add_custom_target(linkcheck
-                      COMMAND sphinx-build -b linkcheck ${RST_OUTPUT} ${SPHINX_OUTPUT}
+                      COMMAND sphinx-build -q -j auto -w ${DOCS_BUILD_DIR}/sphinx.log -b html ${RST_OUTPUT} ${SPHINX_OUTPUT}
                       WORKING_DIRECTORY ${RST_OUTPUT}
                       VERBATIM)
 

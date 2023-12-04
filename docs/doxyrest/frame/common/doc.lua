@@ -210,7 +210,7 @@ end
 function formatDocBlock_heading(block, context)
 	local text = getDocBlockText(block, context)
 
-	if HEADING_TO_RUBRIC then
+	if HEADING_TO_RUBRIC or not text or text == "" then
 		return "\n\n.. rubric:: " .. text .. "\n\n"
 	else
 		return "\n\n" .. getTitle(text, block.level + 1) .. "\n\n"
@@ -464,6 +464,24 @@ function formatDocBlock_sphinxdirective(block, context)
 	return "\n\n" .. code .. "\n\n"
 end
 
+function formatDocBlock_sphinxtabset(block, context)
+	return "\n\n" .. ".. raw:: html\n\n   <div class='sphinxtabset'>" .. "\n\n"
+end
+
+function formatDocBlock_endsphinxtabset(block, context)
+	return "\n\n" .. ".. raw:: html\n\n   </div>" .. "\n\n"
+end
+
+function formatDocBlock_sphinxtab(block, context)
+	local code = getCodeDocBlockContents(block, context)
+	return "\n\n" .. '.. raw:: html\n\n   <div class="sphinxtab" data-sphinxtab-value="' .. code .. '">' .. "\n\n"
+end
+
+function formatDocBlock_endsphinxtab(block, context)
+	return "\n\n" .. ".. raw:: html\n\n   </div>" .. "\n\n"
+end
+
+
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 g_blockKindFormatMap =
@@ -500,7 +518,11 @@ g_blockKindFormatMap =
 	["plantuml"]             = function(b, c) return formatDocBlock_graph(b, c, "uml") end,
 	["msc"]                  = function(b, c) return formatDocBlock_graph(b, c, "msc") end,
 	["blockquote"]           = formatDocBlock_blockquote,
-	["sphinxdirective"]      = formatDocBlock_sphinxdirective
+	["sphinxdirective"]      = formatDocBlock_sphinxdirective,
+	["sphinxtabset"]         = formatDocBlock_sphinxtabset,
+	["endsphinxtabset"]      = formatDocBlock_endsphinxtabset,
+	["sphinxtab"]            = formatDocBlock_sphinxtab,
+	["endsphinxtab"]         = formatDocBlock_endsphinxtab
 }
 
 function getDocBlockContents(block, context)

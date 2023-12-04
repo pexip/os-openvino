@@ -1,18 +1,21 @@
-# Copyright (C) 2018-2021 Intel Corporation
+# Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(newContent "        <plugin name=\"${IE_DEVICE_NAME}\" location=\"${IE_PLUGIN_LIBRARY_NAME}\">")
+cmake_policy(SET CMP0007 NEW)
 
-if(IE_PLUGIN_PROPERTIES)
+set(newContent "        <plugin name=\"${OV_DEVICE_NAME}\" location=\"${OV_PLUGIN_LIBRARY_NAME}\">")
+
+if(OV_PLUGIN_PROPERTIES)
     set(newContent "${newContent}
             <properties>")
 
-    foreach(props IN LISTS IE_PLUGIN_PROPERTIES)
-        string(REPLACE "," ";" props "${props}")
+    foreach(props IN LISTS OV_PLUGIN_PROPERTIES)
+        string(REPLACE ":" ";" props "${props}")
 
         list(GET props 0 key)
         list(GET props 1 value)
+
         set(newContent "${newContent}
                 <property key=\"${key}\" value=\"${value}\"/>")
     endforeach()
@@ -24,4 +27,4 @@ endif()
 set(newContent "${newContent}
         </plugin>")
 
-file(WRITE "${IE_CONFIG_OUTPUT_FILE}" "${newContent}")
+file(WRITE "${OV_CONFIG_OUTPUT_FILE}" "${newContent}")

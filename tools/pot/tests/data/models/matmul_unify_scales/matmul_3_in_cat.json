@@ -1,0 +1,7 @@
+{
+  "name": "matmul_3_in_cat",
+  "framework": "pytorch",
+  "mo_args": {
+    "input_model": "$model_dir/matmul_unify_scales/matmul_3_in_cat.onnx"
+  }
+}

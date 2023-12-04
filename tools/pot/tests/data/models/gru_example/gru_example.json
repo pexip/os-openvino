@@ -1,0 +1,8 @@
+{
+    "name": "gru_example",
+    "framework": "pytorch",
+    "mo_args": {
+      "input_model": "$model_dir/gru_example/gru_example.onnx",
+      "transform": "LowLatency2"
+    }
+}

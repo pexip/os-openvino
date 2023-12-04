@@ -1,0 +1,8 @@
+{
+    "name": "softsign_example",
+    "framework": "tf",
+    "mo_args": {
+      "input_model": "$model_dir/softsign_example/softsign_example.pb",
+      "batch": 1
+    }
+}

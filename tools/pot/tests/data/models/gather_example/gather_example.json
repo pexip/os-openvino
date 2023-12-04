@@ -1,0 +1,7 @@
+{
+    "name": "gather_example",
+    "framework": "tf",
+    "mo_args": {
+      "input_model": "$model_dir/gather_example/gather_example.pb"
+    }
+}

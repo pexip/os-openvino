@@ -1,0 +1,271 @@
+<?xml version="1.0" ?>
+<net name="TensorFlow_Frontend_IR" version="11">
+	<layers>
+		<layer id="0" name="Input" type="Parameter" version="opset1">
+			<data shape="1,15,15,3" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="Input,Input:0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+					<rt_info/>
+				</port>
+			</output>
+		</layer>
+		<layer id="1" name="Operation_top_K/k11203" type="Const" version="opset1">
+			<data offset="0" size="4" shape="" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="Operation_top_K/k,Operation_top_K/k:0"/>
+			</output>
+		</layer>
+		<layer id="2" name="Operation_top_K" type="TopK" version="opset11">
+			<data axis="3" mode="max" sort="value" stable="True" index_element_type="i32"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1"/>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Operation_top_K:0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+				<port id="3" precision="I32" names="Operation_top_K:1">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="3" name="add_indices/fq_weights_169" type="Const" version="opset1">
+			<data offset="4" size="2700" shape="1,15,15,3" element_type="i32"/>
+			<output>
+				<port id="0" precision="I32" names="add_indices/y,add_indices/y:0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="4" name="add_indices" type="Add" version="opset1">
+			<data auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="I32" names="add_indices,add_indices:0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="6" name="3135191" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="7" name="3236182" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="8" name="3337185" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="9" name="3438188" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="10" name="add_values/fq_input_0" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="11" name="4145206" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="12" name="4246197" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="13" name="4347194" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="14" name="4448209" type="Const" version="opset1">
+			<data offset="2704" size="4" shape="" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32"/>
+			</output>
+		</layer>
+		<layer id="15" name="add_values/y14212" type="Const" version="opset1">
+			<data offset="2708" size="2700" shape="1,15,15,3" element_type="f32"/>
+			<output>
+				<port id="0" precision="FP32" names="add_values/y,add_values/y:0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="16" name="add_values/fq_weights_1" type="FakeQuantize" version="opset1">
+			<data levels="0" auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1"/>
+				<port id="2"/>
+				<port id="3"/>
+				<port id="4"/>
+			</input>
+			<output>
+				<port id="5" precision="FP32">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="17" name="add_values" type="Add" version="opset1">
+			<data auto_broadcast="numpy"/>
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="add_values,add_values:0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="5" name="add_indices:0" type="Result" version="opset1">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="18" name="add_values:0" type="Result" version="opset1">
+			<input>
+				<port id="0">
+					<dim>1</dim>
+					<dim>15</dim>
+					<dim>15</dim>
+					<dim>3</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="0" from-port="0" to-layer="2" to-port="0"/>
+		<edge from-layer="1" from-port="0" to-layer="2" to-port="1"/>
+		<edge from-layer="2" from-port="3" to-layer="4" to-port="0"/>
+		<edge from-layer="3" from-port="0" to-layer="4" to-port="1"/>
+		<edge from-layer="2" from-port="2" to-layer="10" to-port="0"/>
+		<edge from-layer="6" from-port="0" to-layer="10" to-port="1"/>
+		<edge from-layer="7" from-port="0" to-layer="10" to-port="2"/>
+		<edge from-layer="8" from-port="0" to-layer="10" to-port="3"/>
+		<edge from-layer="9" from-port="0" to-layer="10" to-port="4"/>
+		<edge from-layer="15" from-port="0" to-layer="16" to-port="0"/>
+		<edge from-layer="11" from-port="0" to-layer="16" to-port="1"/>
+		<edge from-layer="12" from-port="0" to-layer="16" to-port="2"/>
+		<edge from-layer="13" from-port="0" to-layer="16" to-port="3"/>
+		<edge from-layer="14" from-port="0" to-layer="16" to-port="4"/>
+		<edge from-layer="10" from-port="5" to-layer="17" to-port="0"/>
+		<edge from-layer="16" from-port="5" to-layer="17" to-port="1"/>
+		<edge from-layer="4" from-port="2" to-layer="5" to-port="0"/>
+		<edge from-layer="17" from-port="2" to-layer="18" to-port="0"/>
+	</edges>
+	<rt_info>
+		<MO_version value="custom_HEAD_a22c5f16b60ade2761d7da817c653fc02bff9874"/>
+		<Runtime_version value="2023.1.0-11966-a22c5f16b60-HEAD"/>
+		<conversion_parameters>
+			<input_model value="DIR/multiple_out_ports_net.pb"/>
+			<is_python_api_used value="False"/>
+			<model_name value="multiple_out_ports_net"/>
+			<output_dir value="DIR"/>
+		</conversion_parameters>
+		<legacy_frontend value="False"/>
+	</rt_info>
+	<quantization_parameters>
+		<config/>
+		<version value="{}"/>
+		<cli_params value="{}"/>
+	</quantization_parameters>
+</net>

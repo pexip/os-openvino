@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright (C) 2018-2021 Intel Corporation
+# Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
@@ -8,7 +8,7 @@ set -e
 #===================================================================================================
 # Option parsing
 
-all_comp=(opencv_req opencv_opt python dev myriad dlstreamer installer cl_compiler)
+all_comp=(core dev gpu python)
 os=${os:-auto}
 
 # public options
@@ -29,7 +29,7 @@ while :; do
             echo "  -y          non-interactive run (off)"
             echo "  -n          dry-run, assume no (off)"
             echo "  -c=<name>   install component <name>, can be repeated (${all_comp[*]})"
-            echo "  -e          add extra repositories (CentOS 7) (off)"
+            echo "  -e          add extra repositories (RHEL 7, 8, 9) (off)"
             echo "  -p          print package list and exit (off)"
             exit
             ;;
@@ -45,28 +45,35 @@ while :; do
     shift
 done
 
-# No components selected - install all
+# No components selected - install default
 if [ ${#comp[@]} -eq 0 ]; then
-    comp=(${all_comp[@]})
+    comp=("${all_comp[@]}")
 fi
 
 #===================================================================================================
 #  Selftest
 
 if [ -n "$selftest" ] ; then
-    for image in centos:7 ubuntu:18.04 ubuntu:20.04 ; do
+    for image in centos:7 centos:8 rhel:8 rhel:9.1 \
+                 almalinux:8.7 amazonlinux:2 \
+                 fedora:34 fedora:35 fedora:36 fedora:37 fedora:38 \
+                 opensuse/leap:15.3 \
+                 raspbian:9 debian:9 ubuntu:18.04 \
+                 raspbian:10 debian:10 ubuntu:20.04 ubuntu:20.10 ubuntu:21.04 \
+                 raspbian:11 debian:11 ubuntu:21.10 ubuntu:22.04 \
+                 raspbian:12 debian:12 ubuntu:22.10 ubuntu:23.04 ; do
         for opt in  "-h" "-p" "-e -p" "-n" "-n -e" "-y" "-y -e" ; do
             echo "||"
             echo "|| Test $image / '$opt'"
             echo "||"
-            SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]-$0}" )" >/dev/null 2>&1 && pwd )"
+            SCRIPT_DIR="$( cd "$( dirname "$(realpath "${BASH_SOURCE[0]}")" )" >/dev/null 2>&1 && pwd )"
             docker run -it --rm \
-                --volume ${SCRIPT_DIR}:/scripts:ro,Z  \
+                --volume "${SCRIPT_DIR}":/scripts:ro,Z  \
                 --volume yum-cache:/var/cache/yum \
                 --volume apt-cache:/var/cache/apt/archives \
                 -e DEBIAN_FRONTEND=noninteractive \
                 $image \
-                bash /scripts/${0##*/} $opt --keepcache
+                bash "/scripts/${0##*/}" "$opt" --keepcache
             echo "||"
             echo "|| Completed: $image / '$opt'"
             echo "||"
@@ -81,12 +88,26 @@ fi
 # OS detection
 
 if [ "$os" == "auto" ] ; then
+    # shellcheck source=/dev/null
     os=$( . /etc/os-release ; echo "${ID}${VERSION_ID}" )
     if [[ "$os" =~ "rhel8".* ]] ; then
       os="rhel8"
     fi
     case $os in
-        centos7|rhel8|ubuntu18.04|ubuntu20.04) [ -z "$print" ] && echo "Detected OS: ${os}" ;;
+        centos7|centos8|centos9|\
+        rhel8|rhel9.1|\
+        anolis8.6|anolis8.8|\
+        openEuler20.03|openEuler22.03|openEuler23.03|\
+        almalinux8.7|almalinux8.8|almalinux9.2|\
+        amzn2|amzn2022|amzn2023|\
+        ol8.7|ol8.8|ol9.2|\
+        rocky8.7|rocky8.8|rocky9.2|\
+        fedora29|fedora30|fedora31|fedora32|fedora33|fedora34|fedora35|fedora36|fedora37|fedora38|fedora39|fedora40|\
+        opensuse-leap15.3|\
+        raspbian9|debian9|ubuntu18.04|\
+        raspbian10|debian10|ubuntu20.04|ubuntu20.10|ubuntu21.04|\
+        raspbian11|debian11|ubuntu21.10|ubuntu22.04|\
+        raspbian12|debian12|ubuntu22.10) [ -z "$print" ] && echo "Detected OS: ${os}" ;;
         *) echo "Unsupported OS: ${os:-detection failed}" >&2 ; exit 1 ;;
     esac
 fi
@@ -96,228 +117,119 @@ fi
 
 extra_repos=()
 
-if [ "$os" == "ubuntu18.04" ] ; then
+if [ "$os" == "raspbian9" ] || [ "$os" == "debian9" ] ; then
 
-    pkgs_opencv_req=(libgtk-3-0 libgl1)
-    pkgs_python=(python3 python3-dev python3-venv python3-setuptools python3-pip)
-    pkgs_dev=(cmake g++ gcc libc6-dev make curl sudo)
-    pkgs_myriad=(libusb-1.0-0)
-    pkgs_installer=(cpio)
-    pkgs_cl_compiler=(libtinfo5)
-    pkgs_opencv_opt=(
-        gstreamer1.0-plugins-bad
-        gstreamer1.0-plugins-base
-        gstreamer1.0-plugins-good
-        gstreamer1.0-plugins-ugly
-        gstreamer1.0-tools
-        libavcodec57
-        libavformat57
-        libavresample3
-        libavutil55
-        libgstreamer1.0-0
-        libswscale4
-    )
-    pkgs_dlstreamer=(
-        ffmpeg
-        flex
-        gstreamer1.0-alsa
-        gstreamer1.0-plugins-bad
-        gstreamer1.0-plugins-base
-        gstreamer1.0-plugins-good
-        gstreamer1.0-plugins-ugly
-        gstreamer1.0-vaapi
-        gstreamer1.0-tools
-        libfaac0
-        libfluidsynth1
-        libgl-dev
-        libglib2.0-dev
-        libgstreamer1.0-0
-        libnettle6
-        libtag-extras1
-        python3-gi
-        vainfo
-    )
+    # proper versions of cmake and python should be installed separately, because the defaults are:
+    # - python version is 3.5
+    # - cmake version is 3.7.2
+    # which are not supported by OpenVINO
 
-elif [ "$os" == "ubuntu20.04" ] ; then
+    pkgs_core=()
+    pkgs_gpu=(ocl-icd-libopencl1)
+    pkgs_python=()
+    pkgs_dev=(pkg-config g++ gcc libc6-dev make sudo)
 
-    pkgs_opencv_req=(libgtk-3-0 libgl1)
-    pkgs_python=(python3 python3-dev python3-venv python3-setuptools python3-pip)
-    pkgs_dev=(cmake g++ gcc libc6-dev make curl sudo)
-    pkgs_myriad=(libusb-1.0-0)
-    pkgs_installer=(cpio)
-    pkgs_cl_compiler=(libtinfo5)
-    pkgs_opencv_opt=(
-        gstreamer1.0-plugins-bad
-        gstreamer1.0-plugins-base
-        gstreamer1.0-plugins-good
-        gstreamer1.0-plugins-ugly
-        gstreamer1.0-tools
-        libavcodec58
-        libavformat58
-        libavresample4
-        libavutil56
-        libgstreamer1.0-0
-        libswscale5
-    )
-    pkgs_dlstreamer=(
-        ffmpeg
-        flex
-        gstreamer1.0-alsa
-        gstreamer1.0-libav
-        gstreamer1.0-plugins-bad
-        gstreamer1.0-plugins-base
-        gstreamer1.0-plugins-good
-        gstreamer1.0-plugins-ugly
-        gstreamer1.0-vaapi
-        gstreamer1.0-tools
-        gstreamer1.0-x
-        libfaac0
-        libfluidsynth2
-        libgl-dev
-        libglib2.0-dev
-        libgstreamer-plugins-base1.0-dev
-        libgstreamer1.0-0
-        libgstrtspserver-1.0-dev
-        libnettle7
-        libopenexr24
-        libtag-extras1
-        python3-gi
-        python3-gi-cairo
-        python3-gst-1.0
-        vainfo
-    )
+elif [ "$os" == "ubuntu18.04" ] ; then
 
-elif [ "$os" == "rhel8" ] ; then
+    pkgs_core=(libtbb2)
+    pkgs_gpu=(ocl-icd-libopencl1)
+    pkgs_python=(python3.8 libpython3.8 python3.8-venv python3-pip)
+    pkgs_dev=(cmake pkg-config g++ gcc libc6-dev make sudo)
 
-    pkgs_opencv_req=(gtk3)
-    pkgs_python=(python3 python3-devel python3-setuptools python3-pip)
-    pkgs_dev=(gcc gcc-c++ make glibc libstdc++ libgcc cmake curl sudo)
-    pkgs_myriad=()
-    pkgs_installer=()
-    pkgs_opencv_opt=(
-        gstreamer1
-        gstreamer1-plugins-bad-free
-        gstreamer1-plugins-good
-        gstreamer1-plugins-ugly-free
-    )
-    pkgs_dlstreamer=()
-    extra_repos+=(https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm)
+elif [ "$os" == "ubuntu20.04" ] || [ "$os" == "debian10" ] || [ "$os" == "raspbian10" ] ||
+     [ "$os" == "ubuntu21.10" ] || [ "$os" == "ubuntu22.04" ] || [ "$os" == "debian11" ] || [ "$os" == "raspbian11" ] ||
+     [ "$os" == "ubuntu22.10" ] || [ "$os" == "ubuntu23.04" ] || [ "$os" == "debian12" ] || [ "$os" == "raspbian12" ]; then
 
-elif [ "$os" == "centos7" ] ; then
+    pkgs_core=()
+    pkgs_gpu=(ocl-icd-libopencl1)
+    pkgs_python=(python3 python3-venv python3-pip)
+    pkgs_dev=(cmake pkg-config g++ gcc libc6-dev make sudo)
 
-    # find -name *.so -exec objdump -p {} \; | grep NEEDED | sort -u | cut -c 23- | xargs -t -n1 yum -q whatprovides
-
-    pkgs_opencv_req=(gtk2)
-    pkgs_python=(python3 python3-devel python3-setuptools python3-pip)
-    pkgs_dev=(gcc gcc-c++ make glibc libstdc++ libgcc cmake curl sudo)
-    pkgs_myriad=(libusbx)
-    pkgs_installer=()
-    pkgs_cl_compiler=()
-    pkgs_opencv_opt=(
-        gstreamer1
-        gstreamer1-plugins-bad-free
-        gstreamer1-plugins-good
-        gstreamer1-plugins-ugly-free
-    )
-    pkgs_dlstreamer=(
-        OpenEXR-libs
-        alsa-lib
-        boost-regex
-        bzip2-libs
-        cairo
-        cdparanoia-libs
-        flac-libs
-        flite
-        gdk-pixbuf2
-        glib2
-        glibc
-        gmp
-        gsm
-        gstreamer1
-        gstreamer1-plugins-bad-free
-        gstreamer1-plugins-base
-        ilmbase
-        libX11
-        libXdamage
-        libXext
-        libXfixes
-        libXrandr
-        libXrender
-        libXv
-        libdrm
-        libdv
-        libgcc
-        libglvnd-glx
-        libjpeg-turbo
-        libogg
-        libpng
-        librdkafka
-        librsvg2
-        libsndfile
-        libsoup
-        libstdc++
-        libtheora
-        libuuid
-        libv4l
-        libvisual
-        libvorbis
-        libxml2
-        mpg123-libs
-        neon
-        nettle
-        openjpeg2
-        openssl-libs
-        opus
-        orc
-        pango
-        pulseaudio-libs
-        sbc
-        soundtouch
-        speex
-        wavpack
-        xz-libs
-        zlib
-        python36-gi
-        python36-gobject
-        python36-gobject-devel
-    )
-
-    if [ -n "$extra" ] ; then
-        # 1 RPMFusion
-        extra_repos+=(https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-7.noarch.rpm)
-        pkgs_opencv_opt+=(ffmpeg-libs)
-        pkgs_dlstreamer+=(
-            libde265
-            libmms
-            librtmp
-            opencore-amr
-            vo-amrwbenc
-        )
-        # 2 EPEL
-        extra_repos+=(https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm)
-        pkgs_dlstreamer+=(
-            fluidsynth-libs
-            game-music-emu
-            libass
-            libbs2b
-            libchromaprint
-            libmodplug
-            openal-soft
-            paho-c
-            spandsp
-            zbar
-            zvbi
-        )
-        # 3 ForensicsTools
-        extra_repos+=(https://forensics.cert.org/cert-forensics-tools-release-el7.rpm)
-        pkgs_dlstreamer+=(
-            faac
-            fdk-aac
-        )
+    if [ "$os" == "ubuntu22.04" ] || [ "$os" == "ubuntu22.10" ] || [ "$os" == "ubuntu23.04" ] ||
+       [ "$os" == "debian12" ] || [ "$os" == "raspbian12" ] ; then
+        pkgs_core+=(libtbb12)
+    else
+        pkgs_core+=(libtbb2)
     fi
 
+    if [ "$os" == "debian10" ] || [ "$os" == "raspbian10" ] ; then
+        pkgs_python+=(libpython3.7)
+    elif [ "$os" == "ubuntu20.04" ] || [ "$os" == "ubuntu20.10" ] || [ "$os" == "ubuntu21.04" ] ; then
+        pkgs_python+=(libpython3.8)
+    elif [ "$os" == "ubuntu21.10" ] ||
+         [ "$os" == "debian11" ] || [ "$os" == "raspbian11" ] ; then
+        pkgs_python+=(libpython3.9)
+    elif [ "$os" == "ubuntu22.04" ] || [ "$os" == "ubuntu22.10" ] ||
+         [ "$os" == "debian12" ] || [ "$os" == "raspbian12" ] ; then
+        pkgs_python+=(libpython3.10)
+    elif [ "$os" == "ubuntu23.04" ] ; then
+        pkgs_python+=(libpython3.11)
+    fi
+
+elif [ "$os" == "centos7" ] || [ "$os" == "centos8" ] || [ "$os" == "centos9" ] ||
+     [ "$os" == "rhel8" ] || [ "$os" == "rhel9.1" ] ||
+     [ "$os" == "anolis8.6" ] || [ "$os" == "anolis8.8" ] ||
+     [ "$os" == "openEuler20.03" ] || [ "$os" == "openEuler22.03" ] || [ "$os" == "openEuler23.03" ] ||
+     [ "$os" == "fedora29" ] || [ "$os" == "fedora30" ] || [ "$os" == "fedora31" ] || [ "$os" == "fedora32" ] ||
+     [ "$os" == "fedora33" ] || [ "$os" == "fedora34" ] || [ "$os" == "fedora35" ] || [ "$os" == "fedora36" ] ||
+     [ "$os" == "fedora37" ] || [ "$os" == "fedora38" ] || [ "$os" == "fedora39" ] || [ "$os" == "fedora40" ] ||
+     [ "$os" == "ol8.7" ] || [ "$os" == "ol8.8" ] || [ "$os" == "ol9.2" ] ||
+     [ "$os" == "rocky8.7" ] || [ "$os" == "rocky8.8" ] || [ "$os" == "rocky9.2" ] ||
+     [ "$os" == "almalinux8.7" ] || [ "$os" == "almalinux8.8" ] || [ "$os" == "almalinux9.2" ] ||
+     [ "$os" == "amzn2" ] || [ "$os" == "amzn2022" ] || [ "$os" == "amzn2023" ] ; then
+
+    arch=$(uname -m)
+
+    if [ "$os" == "amzn2" ] ; then
+        amazon-linux-extras install epel python3.8
+    fi
+
+    pkgs_core=()
+    pkgs_gpu=()
+    pkgs_python=()
+    pkgs_dev=(gcc gcc-c++ make glibc libstdc++ libgcc cmake3 sudo)
+
+    if [ "$os" == "centos7" ] || [ "$os" == "amzn2" ] ; then
+        pkgs_dev+=(pkgconfig)
+    else
+        pkgs_dev+=(pkgconf-pkg-config)
+    fi
+
+    if [ "$os" == "fedora29" ] || [ "$os" == "fedora30" ] || [ "$os" == "fedora31" ] || [ "$os" == "fedora32" ] ||
+       [ "$os" == "fedora33" ] || [ "$os" == "fedora34" ] || [ "$os" == "fedora35" ] || [ "$os" == "fedora36" ] ||
+       [ "$os" == "fedora37" ] || [ "$os" == "fedora38" ] || [ "$os" == "fedora39" ] || [ "$os" == "fedora40" ] ||
+       [ "$os" == "ol8.7" ] || [ "$os" == "ol8.8" ] || [ "$os" == "ol9.2" ] ||
+       [ "$os" == "rocky8.7" ] || [ "$os" == "rocky8.8" ] || [ "$os" == "rocky9.2" ] ||
+       [ "$os" == "almalinux8.7" ] || [ "$os" == "almalinux8.8" ] || [ "$os" == "almalinux9.2" ] ||
+       [ "$os" == "centos8" ] || [ "$os" == "centos9" ] ||
+       [ "$os" == "amzn2022" ] || [ "$os" == "amzn2023" ] ||
+       [ "$os" == "anolis8.6" ] || [ "$os" == "anolis8.8" ] ||
+       [ "$os" == "openEuler20.03" ] || [ "$os" == "openEuler22.03" ] || [ "$os" == "openEuler23.03" ] ; then
+        pkgs_core+=("tbb.$arch")
+        pkgs_python+=(python3 python3-pip)
+    fi
+
+    if [ "$os" == "centos7" ] || [ "$os" == "amzn2" ] ; then
+        pkgs_gpu+=("ocl-icd.$arch")
+        extra_repos+=("https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
+    elif [ "$os" == "rhel8" ] ; then
+        pkgs_core+=("https://vault.centos.org/centos/8/AppStream/$arch/os/Packages/tbb-2018.2-9.el8.$arch.rpm")
+        pkgs_gpu+=("http://mirror.centos.org/centos/8-stream/AppStream/$arch/os/Packages/ocl-icd-2.2.12-1.el8.$arch.rpm")
+        pkgs_python+=(python38 python38-pip)
+        extra_repos+=("https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm")
+    elif [ "$os" == "rhel9.1" ] ; then
+        pkgs_core+=("http://mirror.stream.centos.org/9-stream/AppStream/$arch/os/Packages/tbb-2020.3-8.el9.$arch.rpm")
+        pkgs_gpu+=("https://mirror.stream.centos.org/9-stream/AppStream/$arch/os/Packages/ocl-icd-2.2.13-4.el9.$arch.rpm")
+        pkgs_python+=(python3 python3-pip)
+        extra_repos+=("https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm")
+    fi
+elif [ "$os" == "opensuse-leap15.3" ] ; then
+    pkgs_core=(libtbb2 libtbbmalloc2)
+    pkgs_gpu=(libOpenCL1)
+    pkgs_python=(python39-base python39 python39-venv python39-pip)
+    pkgs_dev=(cmake pkg-config gcc-c++ gcc make sudo)
 else
-    echo "Internal script error: invalid OS after check (package selection)" >&2
+    echo "Internal script error: invalid OS (${os}) after check (package selection)" >&2
     exit 3
 fi
 
@@ -325,9 +237,9 @@ fi
 # Gather packages and print list
 
 pkgs=()
-for comp in ${comp[@]} ; do
-    var=pkgs_${comp}[@]
-    pkgs+=(${!var})
+for comp in "${comp[@]}" ; do
+    var="pkgs_${comp}[@]"
+    pkgs+=("${!var}")
 done
 
 if [ ${#pkgs[@]} -eq 0 ]; then
@@ -356,25 +268,47 @@ fi
 
 iopt=
 
-if [ "$os" == "ubuntu18.04" ] || [ "$os" == "ubuntu20.04" ] ; then
+if [ "$os" == "debian9" ] || [ "$os" == "raspbian9" ] || [ "$os" == "ubuntu18.04" ] ||
+   [ "$os" == "debian10" ] || [ "$os" == "raspbian10" ] || [ "$os" == "ubuntu20.04" ] || [ "$os" == "ubuntu20.10" ] || [ "$os" == "ubuntu21.04" ] ||
+   [ "$os" == "debian11" ] || [ "$os" == "raspbian11" ] || [ "$os" == "ubuntu21.10" ] || [ "$os" == "ubuntu22.04" ] ||
+   [ "$os" == "debian12" ] || [ "$os" == "raspbian12" ] || [ "$os" == "ubuntu22.10" ] ; then
 
     [ -z "$interactive" ] && iopt="-y"
     [ -n "$dry" ] && iopt="--dry-run"
     [ -n "$keepcache" ] && rm -f /etc/apt/apt.conf.d/docker-clean
 
-    apt-get update && apt-get install --no-install-recommends $iopt ${pkgs[@]}
+    apt-get update && apt-get install --no-install-recommends "$iopt" "${pkgs[@]}"
 
-elif [ "$os" == "centos7" ] || [ "$os" == "rhel8" ] ; then
+elif [ "$os" == "centos7" ] || [ "$os" == "centos8" ] || [ "$os" == "centos9" ] ||
+     [ "$os" == "rhel8" ] || [ "$os" == "rhel9.1" ] ||
+     [ "$os" == "anolis8.6" ] || [ "$os" == "anolis8.8" ] ||
+     [ "$os" == "openEuler20.03" ] || [ "$os" == "openEuler22.03" ] || [ "$os" == "openEuler23.03" ] ||
+     [ "$os" == "fedora29" ] || [ "$os" == "fedora30" ] || [ "$os" == "fedora31" ] || [ "$os" == "fedora32" ] ||
+     [ "$os" == "fedora33" ] || [ "$os" == "fedora34" ] || [ "$os" == "fedora35" ] || [ "$os" == "fedora36" ] ||
+     [ "$os" == "fedora37" ] || [ "$os" == "fedora38" ] || [ "$os" == "fedora39" ] || [ "$os" == "fedora40" ] ||
+     [ "$os" == "fedora36" ] || [ "$os" == "fedora38" ] ||
+     [ "$os" == "ol8.7" ] || [ "$os" == "ol8.8" ] || [ "$os" == "ol9.2" ] ||
+     [ "$os" == "rocky8.7" ] || [ "$os" == "rocky8.8" ] || [ "$os" == "rocky9.2" ] ||
+     [ "$os" == "almalinux8.7" ] || [ "$os" == "almalinux8.8" ] || [ "$os" == "almalinux9.2" ] ||
+     [ "$os" == "amzn2" ] || [ "$os" == "amzn2022" ] || [ "$os" == "amzn2023" ] ; then
 
     [ -z "$interactive" ] && iopt="--assumeyes"
     [ -n "$dry" ] && iopt="--downloadonly"
     [ -n "$keepcache" ] && iopt="$iopt --setopt=keepcache=1"
-    [ ${#extra_repos[@]} -ne 0 ] && yum localinstall $iopt --nogpgcheck ${extra_repos[@]}
+    [ -n "$extra" ] && [ ${#extra_repos[@]} -ne 0 ] && yum localinstall "$iopt" --nogpgcheck "${extra_repos[@]}"
 
-    yum install $iopt ${pkgs[@]}
+    yum install "$iopt" "${pkgs[@]}"
+
+elif [ "$os" == "opensuse-leap15.3" ] ; then
+
+    [ -z "$interactive" ] && iopt="-y"
+    [ -n "$dry" ] && iopt="--dry-run"
+    [ -n "$keepcache" ] && zypper clean --all
+
+    zypper ref && zypper in --auto-agree-with-licenses --no-recommends "$iopt" "${pkgs[@]}"
 
 else
-    echo "Internal script error: invalid OS after check (package installation)" >&2
+    echo "Internal script error: invalid OS (${os}) after check (package installation)" >&2
     exit 3
 fi
 

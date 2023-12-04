@@ -1,5 +1,9 @@
+-c ../../constraints.txt
 pymongo
 Jinja2
 PyYAML
-
-h5py<3.0.0 # WA for OMZ Keras models. Details: https://github.com/openvinotoolkit/open_model_zoo/issues/1806
+fastjsonschema
+pandas
+h5py
+scipy
+defusedxml

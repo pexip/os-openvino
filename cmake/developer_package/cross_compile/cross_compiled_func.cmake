@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2021 Intel Corporation
+# Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -19,9 +19,9 @@ set(_DEFINE_AVX2     "HAVE_AVX2"    ${_DEFINE_AVX})
 set(_DEFINE_AVX512F  "HAVE_AVX512F" ${_DEFINE_AVX2})
 
 ## Arch specific compile options
-ie_avx512_optimization_flags(_FLAGS_AVX512F)
-ie_avx2_optimization_flags  (_FLAGS_AVX2)
-ie_sse42_optimization_flags (_FLAGS_SSE42)
+ov_avx512_optimization_flags(_FLAGS_AVX512F)
+ov_avx2_optimization_flags  (_FLAGS_AVX2)
+ov_sse42_optimization_flags (_FLAGS_SSE42)
 set(_FLAGS_AVX "")  ## TBD is not defined for IE project yet
 set(_FLAGS_ANY "")  ##
 
@@ -120,8 +120,8 @@ function(_clone_source_to_target TARGET SOURCE ARCH_SET)
                 VERBATIM
                 )
 
-        set_property(SOURCE ${ARCH_SOURCE} APPEND_STRING PROPERTY COMPILE_FLAGS
-                " ${_FLAGS_${_arch}}")
+        set_property(SOURCE ${ARCH_SOURCE} APPEND_STRING PROPERTY COMPILE_OPTIONS
+                "${_FLAGS_${_arch}}")
 
         set_property(SOURCE ${ARCH_SOURCE} APPEND PROPERTY COMPILE_DEFINITIONS
                 ${_DEFINE_${_arch}}

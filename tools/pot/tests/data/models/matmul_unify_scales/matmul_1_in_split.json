@@ -1,0 +1,7 @@
+{
+  "name": "matmul_1_in_split",
+  "framework": "pytorch",
+  "mo_args": {
+    "input_model": "$model_dir/matmul_unify_scales/matmul_1_in_split.onnx"
+  }
+}
