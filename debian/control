@@ -18,6 +18,7 @@ Build-Depends:
  libsnappy-dev,
  libtbb-dev,
  nlohmann-json3-dev,
+ pkg-config,
  protobuf-compiler,
  pybind11-dev,
  scons,
