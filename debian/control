@@ -20,6 +20,7 @@ Build-Depends:
  nlohmann-json3-dev,
  protobuf-compiler,
  pybind11-dev,
+ scons,
  shellcheck,
  libxbyak-dev [amd64]
 Homepage: https://01.org/openvinotoolkit
