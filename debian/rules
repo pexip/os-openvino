@@ -2,10 +2,6 @@
 
 include /usr/share/dpkg/architecture.mk
 
-DOT_IN_FILES := \
-	libinference-engine.install \
-	openvino-dev.install
-
 %:
 	dh $@
 
@@ -45,7 +41,3 @@ CONFFLAGS := \
 
 override_dh_auto_configure:
 	dh_auto_configure -- $(CONFFLAGS)
-
-override_dh_auto_clean:
-	dh_auto_clean
-	for file in $(DOT_IN_FILES); do rm -f debian/$${file}; done
