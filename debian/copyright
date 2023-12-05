@@ -1,370 +1,261 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: OpenVINO
 Source: https://github.com/openvinotoolkit/openvino
-Copyright: 2018-2021 Intel Corporation
-License: Apache-2.0
 
 Files: *
-Copyright:
- 2016-2021 Intel Corporation
+Copyright: 2018-2024 Intel Corporation
 License: Apache-2.0
+
+Files: cmake/developer_package/cpplint/*
+Copyright: 1999, 2005-2011, 2013, 2015, 2017, 2018, Google Inc.
+License: BSD-3-clause
+
+Files: cmake/developer_package/ncc_naming_style/ncc/*
+Copyright: 2018, Nithin Nellikunnu (nithin.nn@gmail.com)
+License: Expat
 
 Files: debian/*
 Copyright: 2021 Pexip AS
 License: Apache-2.0
 
-Files: docs/doxygen/assets/bootstrap*.css
-Copyright:
-  2011-2021 Twitter, Inc.
-  2011-2021 The Bootstrap Authors
+Files: docs/_static/download/operation_conformance_table_files/template/chosen.jquery.min.js
+       src/tests/test_utils/functional_test_utils/layer_tests_summary/template/chosen.jquery.min.js
+Copyright: 2011-2018 Harvest
 License: Expat
 
-Files: docs/doxygen/assets/fonts/Lato/*
-Copyright:
-  2010-2014 by tyPoland Lukasz Dziedzic (team@latofonts.com)
-License: OFL-1.1
-
-Files: docs/doxygen/assets/jquery-*.js
-Copyright:
-  OpenJS Foundation and other contributors
+Files: docs/_static/js/viewer.min.js
+Copyright: 2015-2023 Chen Fengyuan
 License: Expat
 
-Files:
-  inference-engine/ie_bridges/python/cmake/CythonConfig.cmake
-  inference-engine/ie_bridges/python/cmake/UseCython.cmake
-Copyright:
-  2011 Kitware, Inc.
-  2018-2021 Intel Corporation
-License: Apache-2.0
-
-Files: inference-engine/samples/thirdparty/gflags/*
-Copyright:
-  2006 Google Inc.
-License: BSD-3-Clause
-
-Files: inference-engine/scripts/cpplint.py
-Copyright:
-  2009 Google Inc.
-License: BSD-3-Clause
-
-Files: inference-engine/src/mkldnn_plugin/nodes/roifeatureextractor_onnx.cpp
-Copyright:
-  2018 Facebook
-  2018-2021 Intel Corporation
-License: Apache-2.0 and Expat
-
-Files: inference-engine/tests/ie_test_utils/common_test_utils/gtest/*
-Copyright:
-  2006-2008 Google Inc.
-License: BSD-3-Clause
-
-Files: inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/*
-Copyright:
-  2007-2008 Google Inc.
-License: Apache-2.0
-
-Files:
-  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/ast.py
-  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/gmock_class_test.py
-  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/keywords.py
-  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/tokenize.py
-  inference-engine/tests/ie_test_utils/common_test_utils/gtest/googlemock/scripts/generator/cpp/utils.py
-Copyright:
-  2007-2009 Google Inc.
-  2007-2009 Neal Norwitz
-License: Apache-2.0
-
-Files: inference-engine/tests_deprecated/functional/shared_tests/lstm/npy.hpp
-Copyright:
-  2017 Leon Merten Lohse
-  2018-2021 Intel Corporation
+Files: docs/_static/selector-tool/*
+Copyright: Facebook, Inc. and its affiliates.
 License: Expat
 
-Files: inference-engine/thirdparty/fluid/*
-Copyright:
-   2000-2020 Intel Corporation, all rights reserved.
-   2009-2011 Willow Garage Inc., all rights reserved.
-   2009-2016 NVIDIA Corporation, all rights reserved.
-   2010-2013 Advanced Micro Devices, Inc., all rights reserved.
-   2015-2016 OpenCV Foundation, all rights reserved.
-   2015-2016 Itseez Inc., all rights reserved.
-   2019-2020 Xperience AI, all rights reserved.
-License: Apache-2.0
-
-Files: inference-engine/thirdparty/mkl-dnn/*
-Copyright:
-  2016-2020 Intel Corporation
-  2018 YANDEX LLC
-  2020 Arm Limited and affiliates
-License: Apache-2.0
-
-Files: inference-engine/thirdparty/mkl-dnn/doc/assets/fonts/fontawesome*
-Copyright:
-  2016 Dave Gandy
-License: OFL-1.1
-
-Files: inference-engine/thirdparty/mkl-dnn/doc/assets/fonts/Roboto*
-Copyright:
-  2011 The Roboto Project Authors
-License: Apache-2.0
-
-Files: inference-engine/thirdparty/mkl-dnn/doc/assets/fonts/lato-*
-Copyright:
-  2010-2014 by tyPoland Lukasz Dziedzic (team@latofonts.com)
-License: OFL-1.1
-
-Files: inference-engine/thirdparty/mkl-dnn/doc/assets/mathjax/*
-Copyright:
-  2009-2018 The MathJax Consortium
-License: Apache-2.0
-
-Files: inference-engine/thirdparty/mkl-dnn/src/common/primitive_hashing.hpp
-Copyright:
-  2005-2014 Daniel James
-  2019-2020 Intel Corporation
-License: Apache-2.0 and BSL-1.0
-
-Files: inference-engine/thirdparty/mkl-dnn/src/cpu/xbyak/*
-Copyright:
-  2007 MITSUNARI Shigeo
-  2016-2020 Intel Corporation
-License: BSD-3-Clause
-
-Files: inference-engine/thirdparty/mkl-dnn/src/cpu/x64/jit_utils/jitprofiling/*
-Copyright:
-  2005-2014 Intel Corporation
-License: BSD-3-Clause
-
-Files:
-  inference-engine/thirdparty/mkl-dnn/src/gpu/jit/ngen/npack/elf_struct.hpp
-  inference-engine/thirdparty/mkl-dnn/src/gpu/jit/ngen/npack/hash.hpp
-  inference-engine/thirdparty/mkl-dnn/src/gpu/jit/ngen/npack/neo_structs.hpp
-Copyright:
-  2018-2019 Intel Corporation
+Files: docs/doxyrest-sphinx/cpplexer.py
+Copyright: 2006-2015, the Pygments team
 License: Expat
 
-Files: inference-engine/thirdparty/mkl-dnn/tests/gtests/gtest/*
-Copyright:
-  1999-2017 Google Inc.
-License: BSD-3-Clause
+Files: src/core/reference/include/openvino/reference/deformable_psroi_pooling.hpp
+Copyright: 2018-2023, Intel Corporation
+ 2017, Microsoft
+License: Apache-2.0 and/or Expat
 
-Files: inference-engine/thirdparty/ocv/*
-Copyright:
-  2000-2008 Intel Corporation
-  2009 Willow Garage Inc.
-  2013 OpenCV Foundation
-  2015 Itseez Inc.
-License: BSD-3-Clause
-
-Files:
-  inference-engine/thirdparty/ocv/opencv_hal_avx.hpp
-  inference-engine/thirdparty/ocv/opencv_hal_avx512.hpp
-  inference-engine/thirdparty/ocv/opencv_hal_intrin_forward.hpp
-Copyright:
-   2000-2020 Intel Corporation
-   2009-2011 Willow Garage Inc.
-   2009-2016 NVIDIA Corporation
-   2010-2013 Advanced Micro Devices, Inc.
-   2015-2016 OpenCV Foundation
-   2015-2016 Itseez Inc.
-   2019-2020 Xperience AI
+Files: src/core/reference/include/openvino/reference/nms_rotated_util.hpp
+Copyright: Facebook, Inc. and its affiliates.
+ 2018-2023, Intel Corporation
 License: Apache-2.0
 
-Files: ngraph/core/reference/include/ngraph/runtime/reference/deformable_psroi_pooling.hpp
-Copyright:
-  2017 Microsoft
-  2018-2021 Intel Corporation
-License: Apache-2.0 and Expat
-
-Files:
-  ngraph/core/src/type/bfloat16.cpp
-  ngraph/core/src/type/float16.cpp
-Copyright:
-  2016 The TensorFlow Authors.
-  2018-2021 Intel Corporation
+Files: src/plugins/intel_cpu/src/nodes/non_max_suppression.cpp
+Copyright: Facebook, Inc. and its affiliates.
+ 2018-2023, Intel Corporation
 License: Apache-2.0
+
+Files: src/plugins/intel_cpu/thirdparty/ComputeLibrary/*
+Copyright: 2017-2023, Arm Limited
+License: Expat
+
+Files: src/plugins/intel_cpu/thirdparty/mlas/*
+Copyright: Microsoft Corporation.
+License: Apache-2.0 and/or Expat
+
+Files: src/plugins/intel_cpu/thirdparty/mlas/lib/amd64/AssembleAvxVnni.inc
+Copyright: 2020, Intel Corporation.
+License: Expat
+
+Files: src/plugins/intel_cpu/thirdparty/mlas/lib/qdwconv_kernelsize.cpp
+Copyright: Facebook, Inc. and its affiliates.
+ 2019, Google LLC
+License: BSD-3-clause
+
+Files: src/plugins/intel_cpu/thirdparty/mlas/lib/reorder.cpp
+Copyright: Microsoft Corporation.
+ 2019, 2022, Oracle and/or its affiliates.
+License: Expat
+
+Files: src/plugins/intel_cpu/thirdparty/mlas/lib/x86_64/AssembleAvxVnni.h
+  src/plugins/intel_cpu/thirdparty/mlas/lib/x86_64/QgemvU8S8KernelAvxVnni.S
+Copyright: 2020, Intel Corporation.
+License: Expat
+
+Files: src/plugins/intel_cpu/thirdparty/onednn/*
+Copyright: Intel Corporation
+ 2023, KNS Group LLC (YADRO)
+ 2022, 2023, IBM Corporation
+ 2021, Alanna Tempest
+ 2020-2023, Arm Ltd. and affiliates
+ 2020-2022, Codeplay Software Limited
+ 2019-2023, FUJITSU LIMITED
+ 2018, YANDEX LLC
+ 2016-2024, Intel Corporation
+License: Apache-2.0
+Copyright: 2016-2024, Intel Corporation
+License: Apache-2.0
+
+Files: src/plugins/intel_cpu/thirdparty/onednn/tests/gtests/gtest/*
+Copyright: 1999, 2005-2011, 2013, 2015, 2017, 2018, Google Inc.
+License: BSD-3-clause
+
+Files: src/plugins/intel_gpu/tests/unit/gtest_main_gpu.cpp
+Copyright: 1999, 2005-2011, 2013, 2015, 2017, 2018, Google Inc.
+License: BSD-3-clause
+
+Files: src/plugins/intel_gpu/thirdparty/rapidjson/*
+Copyright: 2015, THL A29 Limited, a Tencent company, and Milo Yip.
+License: Expat
+
+Files: src/plugins/intel_gpu/thirdparty/rapidjson/msinttypes/*
+Copyright: 2006-2013, Alexander Chemeris
+License: BSD-3-clause
 
 Files: thirdparty/cnpy/*
-Copyright:
-  2011 Carl Rogers
+Copyright: 2011, Carl Rogers
 License: Expat
 
+Files: thirdparty/fluid/*
+Copyright: 2018, Intel Corporation
+License: Expat
+
+Files: thirdparty/gflags/*
+Copyright: 2005-2011 Google Inc.
+License: BSD-3-clause
+
+Files: thirdparty/gflags/gflags/src/gflags_ns.h.in
+Copyright: 2014, Andreas Schuh
+License: BSD-3-clause
+
+Files: thirdparty/gtest/gtest/googletest/*
+Copyright: 2008, Google Inc.
+License: BSD-3-clause
+
+Files: thirdparty/gtest/gtest/googlemock/*
+Copyright: 2007, 2008, Google Inc.
+License: Apache-2.0
+
+Files: thirdparty/gtest/gtest/googlemock/scripts/generator/cpp/*
+Copyright: 2007, 2009, Neal Norwitz
+ 2007, 2009, Google Inc.
+License: Apache-2.0
+
 Files: thirdparty/itt_collector/*
-Copyright:
-  2011-2021 Intel Corporation
-License: BSD-3-Clause
+Copyright: 2021, Intel Corporation
+License: BSD-3-clause
 
-Files:
-  thirdparty/itt_collector/CMakeLists.txt
-  thirdparty/itt_collector/sea_itt_lib/CMakeLists.txt
-Copyright:
-  2017-2021 Intel Corporation
+Files: thirdparty/ittapi/*
+Copyright: 2005-2019 Intel Corporation
+License: GPL-2 or BSD-3-clause
+
+Files: thirdparty/ocl/*
+Copyright: 2008-2022, The Khronos Group Inc.
 License: Apache-2.0
 
-License: Apache-2.0
- Licensed under the Apache License, Version 2.0 (the "License"); you may not use
- this file except in compliance with the License. You may obtain a copy of the
- License at
- .
-     https://www.apache.org/licenses/LICENSE-2.0
- .
- Unless required by applicable law or agreed to in writing, software distributed
- under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- CONDITIONS OF ANY KIND, either express or implied. See the License for the
- specific language governing permissions and limitations under the License.
- .
- On Debian systems, the complete text of the Apache License, Version 2.0, can be
- found in "/usr/share/common-licenses/Apache-2.0".
+Files: thirdparty/ocl/clhpp_headers/external/CMock/*
+Copyright: 2007-2017, Mike Karlesky, Mark VanderVoord, Greg Williams
+License: Expat
 
-License: BSD-3-Clause
+Files: thirdparty/ocl/clhpp_headers/external/CMock/vendor/behaviors/*
+Copyright: 2005, David Heinemeier Hansson
+License: Expat
+
+Files: thirdparty/ocl/clhpp_headers/external/CMock/vendor/c_exception/vendor/unity/auto/unity_test_summary.py
+       thirdparty/ocl/clhpp_headers/external/CMock/vendor/unity/auto/unity_test_summary.py
+Copyright:  2015, Alexander Mueller
+License: Expat
+
+Files: thirdparty/ocl/clhpp_headers/external/Unity/*
+Copyright: 2007-2014, Mike Karlesky, Mark VanderVoord, Greg Williams
+License: Expat
+
+Files: thirdparty/ocl/clhpp_headers/include/*
+Copyright: 2008-2022, The Khronos Group Inc.
+License: Apache-2.0
+
+Files: thirdparty/ocl/icd_loader/loader/windows/adapter.h
+Copyright: 2019, Valve Corporation
+ 2019, The Khronos Group Inc.
+ 2019, LunarG, Inc.
+License: Apache-2.0
+
+Files: thirdparty/ocv/*
+Copyright: 2015, Itseez Inc.
+ 2013, OpenCV Foundation
+ 2009, Willow Garage Inc.
+ 2000-2008, Intel Corporation
+License: BSD-3-clause
+
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS"BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ On Debian systems, the complete text of the Apache License,
+ Version 2.0 can be found in '/usr/share/common-licenses/Apache-2.0'.
+
+License: BSD-3-clause
+ The BSD License
+ .
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are
  met:
  .
-    * Redistributions of source code must retain the above copyright
- notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above
- copyright notice, this list of conditions and the following disclaimer
- in the documentation and/or other materials provided with the
- distribution.
-    * Neither the name of the ORGANIZATION nor the names of its
- contributors may be used to endorse or promote products derived from
- this software without specific prior written permission.
+   * Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
  .
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
-
-License: BSL-1.0
- Permission is hereby granted, free of charge, to any person or organization
- obtaining a copy of the software and accompanying documentation covered by
- this license (the "Software") to use, reproduce, display, distribute,
- execute, and transmit the Software, and to prepare derivative works of the
- Software, and to permit third-parties to whom the Software is furnished to
- do so, all subject to the following:
+   * Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
  .
- The copyright notices in the Software and this entire statement, including
- the above license grant, this restriction and the following disclaimer,
- must be included in all copies of the Software, in whole or in part, and
- all derivative works of the Software, unless such copies or derivative
- works are solely in the form of machine-executable object code generated by
- a source language processor.
+   * Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from
+     this software without specific prior written permission.
  .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
- SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
- FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- DEALINGS IN THE SOFTWARE.
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+ PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 License: Expat
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
+ The MIT License
  .
- The above copyright notice and this permission notice shall be included in all
- copies or substantial portions of the Software.
+ Permission is hereby granted, free of charge, to any person
+ obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the Software
+ without restriction, including without limitation the rights to
+ use, copy, modify, merge, publish, distribute, sublicense,
+ and/or sell copies of the Software, and to permit persons to
+ whom the Software is furnished to do so, subject to the
+ following conditions:
  .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
+ The above copyright notice and this permission notice shall
+ be included in all copies or substantial portions of the
+ Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT
+ WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ CONNECTION WITH THE SOFTWARE OR THE USE OR
+ OTHER DEALINGS IN THE SOFTWARE.
 
-License: OFL-1.1
- PREAMBLE
- The goals of the Open Font License (OFL) are to stimulate worldwide
- development of collaborative font projects, to support the font creation
- efforts of academic and linguistic communities, and to provide a free and
- open framework in which fonts may be shared and improved in partnership
- with others.
- .
- The OFL allows the licensed fonts to be used, studied, modified and
- redistributed freely as long as they are not sold by themselves. The
- fonts, including any derivative works, can be bundled, embedded, 
- redistributed and/or sold with any software provided that any reserved
- names are not used by derivative works. The fonts and derivatives,
- however, cannot be released under any other type of license. The
- requirement for fonts to remain under this license does not apply
- to any document created using the fonts or their derivatives.
- .
- DEFINITIONS
- "Font Software" refers to the set of files released by the Copyright
- Holder(s) under this license and clearly marked as such. This may
- include source files, build scripts and documentation.
- .
- "Reserved Font Name" refers to any names specified as such after the
- copyright statement(s).
- .
- "Original Version" refers to the collection of Font Software components as
- distributed by the Copyright Holder(s).
- .
- "Modified Version" refers to any derivative made by adding to, deleting,
- or substituting -- in part or in whole -- any of the components of the
- Original Version, by changing formats or by porting the Font Software to a
- new environment.
- .
- "Author" refers to any designer, engineer, programmer, technical
- writer or other person who contributed to the Font Software.
- .
- PERMISSION & CONDITIONS
- Permission is hereby granted, free of charge, to any person obtaining
- a copy of the Font Software, to use, study, copy, merge, embed, modify,
- redistribute, and sell modified and unmodified copies of the Font
- Software, subject to the following conditions:
- .
- 1) Neither the Font Software nor any of its individual components,
- in Original or Modified Versions, may be sold by itself.
- .
- 2) Original or Modified Versions of the Font Software may be bundled,
- redistributed and/or sold with any software, provided that each copy
- contains the above copyright notice and this license. These can be
- included either as stand-alone text files, human-readable headers or
- in the appropriate machine-readable metadata fields within text or
- binary files as long as those fields can be easily viewed by the user.
- .
- 3) No Modified Version of the Font Software may use the Reserved Font
- Name(s) unless explicit written permission is granted by the corresponding
- Copyright Holder. This restriction only applies to the primary font name as
- presented to the users.
- .
- 4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
- Software shall not be used to promote, endorse or advertise any
- Modified Version, except to acknowledge the contribution(s) of the
- Copyright Holder(s) and the Author(s) or with their explicit written
- permission.
- .
- 5) The Font Software, modified or unmodified, in part or in whole,
- must be distributed entirely under this license, and must not be
- distributed under any other license. The requirement for fonts to
- remain under this license does not apply to any document created
- using the Font Software.
- .
- TERMINATION
- This license becomes null and void if any of the above conditions are
- not met.
- .
- DISCLAIMER
- THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
- MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
- OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
- COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
- DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
- OTHER DEALINGS IN THE FONT SOFTWARE.
+License: GPL-2
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; version 2 dated June, 1991.
+ On Debian systems, the complete text of version 2 of the GNU General
+ Public License can be found in '/usr/share/common-licenses/GPL-2'.
