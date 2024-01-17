@@ -1,3 +1,9 @@
+openvino (2023.2.0+repack1-0pexip3) pexip-bookworm; urgency=medium
+
+  * Add plugins.xml file back to distribution.
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Wed, 17 Jan 2024 23:06:53 +0000
+
 openvino (2023.2.0+repack1-0pexip2) pexip-bookworm; urgency=medium
 
   * Bookworm build for product distribution

@@ -42,3 +42,7 @@ CONFFLAGS := \
 
 override_dh_auto_configure:
 	dh_auto_configure -- $(CONFFLAGS)
+
+override_dh_auto_install:
+	cp debian/plugins.$(DEB_HOST_ARCH).xml debian/plugins.xml
+	dh_auto_install

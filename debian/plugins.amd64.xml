@@ -1,0 +1,11 @@
+<!--
+Copyright (C) 2020 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
+<ie>
+    <plugins>
+        <plugin location="/usr/lib/x86_64-linux-gnu/openvino-2023.2.0/libopenvino_intel_cpu_plugin.so" name="CUSTOM">
+        </plugin>
+    </plugins>
+</ie>
