@@ -61,7 +61,7 @@ public:
     std::shared_ptr<T> register_pass(Args&&... args) {
         return ov::pass::Manager::register_pass<T>(args...);
     }
-    template <typename T, class Pos,  class... Args, std::enable_if<std::is_same<PassPosition, Pos>::value, bool>() = true>
+    template <typename T, class Pos,  class... Args>
     std::shared_ptr<T> register_pass(const PassPosition& position, Args&&... args) {
         static_assert(std::is_base_of<PassBase, T>::value, "Attempt to insert pass that is not derived from PassBase");
         auto pass = std::make_shared<T>(std::forward<Args>(args)...);
