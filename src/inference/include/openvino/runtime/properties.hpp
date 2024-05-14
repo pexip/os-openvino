@@ -171,7 +171,7 @@ public:
  * @brief This class is used to return property name and its mutability attribute
  */
 struct PropertyName : public std::string {
-    using std::string::string;
+    //using std::string::string;
 
     /**
      * @brief Constructs property name object
@@ -179,6 +179,10 @@ struct PropertyName : public std::string {
      * @param mutability property mutability
      */
     PropertyName(const std::string& str, PropertyMutability mutability = PropertyMutability::RW)
+        : std::string{str},
+          _mutability{mutability} {}
+
+    PropertyName(const char* const str, PropertyMutability mutability = PropertyMutability::RW)
         : std::string{str},
           _mutability{mutability} {}
 
