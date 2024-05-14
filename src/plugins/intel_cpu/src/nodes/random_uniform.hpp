@@ -5,7 +5,12 @@
 #pragma once
 
 #include <node.h>
+
+/* PEXHACK: ICC + GCC fix */
+#define __extension__
 #include <random>
+#undef __extension__
+
 #include "kernels/x64/random_uniform.hpp"
 
 namespace ov {
