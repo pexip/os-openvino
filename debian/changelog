@@ -1,4 +1,4 @@
-openvino (2023.2.0+repack1-0+pexip24u5) pexip-bookworm; urgency=medium
+openvino (2023.2.0+repack1-0+pexip24u5) pexip; urgency=medium
 
   * Add ARM64 plugins variant.
   * Change threading model to SEQ (from TBB_AUTO).
