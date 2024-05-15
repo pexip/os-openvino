@@ -1,6 +1,7 @@
 openvino (2023.2.0+repack1-0+pexip24u5) UNRELEASED; urgency=medium
 
   * Add ARM64 plugins variant.
+  * Change threading model to SEQ (from TBB_AUTO).
 
  -- Mark Hymers <mark.hymers@pexip.com>  Wed, 15 May 2024 10:13:47 +0100
 

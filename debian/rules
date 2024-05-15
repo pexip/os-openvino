@@ -35,7 +35,7 @@ CONFFLAGS := \
 	-DENABLE_TESTS=OFF \
 	-DProtobuf_USE_STATIC_LIBS=OFF \
 	-DTBBROOT=/usr/lib/$(DEB_HOST_MULTIARCH) \
-	-DTHREADING=TBB_AUTO \
+	-DTHREADING=SEQ \
 	-DCPACK_GENERATOR=DEB \
 	"-GUnix Makefiles" \
 #	--debug-output --trace --trace-expand
