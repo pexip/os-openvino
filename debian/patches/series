@@ -9,3 +9,4 @@ pexip_disable_docs.patch
 pexip_do_not_look_for_private_secure_getenv.patch
 pexip_no_thirdparty_install.patch
 pexip_fix_pc_file.patch
+pexip_icc_header_workaround.patch

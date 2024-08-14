@@ -1,0 +1,30 @@
+commit a37825cb0ab8f1e281d5c77a8216453786e39a4f
+Author: Havard Graff <havard@pexip.com>
+Date:   Tue May 14 18:48:53 2024 +0200
+
+    inference/runtime/properties: work around bug in ICC
+
+diff --git a/src/inference/include/openvino/runtime/properties.hpp b/src/inference/include/openvino/runtime/properties.hpp
+index f28e46de..d29f778e 100644
+--- a/src/inference/include/openvino/runtime/properties.hpp
++++ b/src/inference/include/openvino/runtime/properties.hpp
+@@ -171,7 +171,7 @@ public:
+  * @brief This class is used to return property name and its mutability attribute
+  */
+ struct PropertyName : public std::string {
+-    using std::string::string;
++    //using std::string::string;
+ 
+     /**
+      * @brief Constructs property name object
+@@ -182,6 +182,10 @@ struct PropertyName : public std::string {
+         : std::string{str},
+           _mutability{mutability} {}
+ 
++    PropertyName(const char* const str, PropertyMutability mutability = PropertyMutability::RW)
++        : std::string{str},
++          _mutability{mutability} {}
++
+     template <class T, typename std::enable_if<std::is_base_of<ov::util::PropertyTag, T>::value, bool>::type = true>
+     PropertyName(const T& property) : std::string{property.name()},
+                                       _mutability{property.mutability} {}
