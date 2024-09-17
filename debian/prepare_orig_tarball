@@ -32,9 +32,10 @@ git submodule init
 git submodule update --recursive --init
 
 # Disable submodules: we use the system libraries
-git submodule deinit inference-engine/thirdparty/ade
-git submodule deinit thirdparty/xbyak
-git submodule deinit thirdparty/zlib/zlib
+git submodule deinit inference-engine/thirdparty/ade || true
+git submodule deinit thirdparty/xbyak || true
+git submodule deinit thirdparty/zlib/zlib || true
+git submodule deinit thirdparty/open_model_zoo || true
 
 # Prevent export of vendored third-party sources we don't want
 cat >.git/info/attributes <<EOF
@@ -43,6 +44,7 @@ inference-engine/thirdparty/ade export-ignore
 inference-engine/thirdparty/clDNN export-ignore
 inference-engine/thirdparty/movidius export-ignore
 inference-engine/thirdparty/pugixml export-ignore
+thirdparty/open_model_zoo export-ignore
 thirdparty/xbyak export-ignore
 thirdparty/zlib export-ignore
 EOF
