@@ -1,0 +1,11 @@
+Index: os-openvino/src/bindings/CMakeLists.txt
+===================================================================
+--- os-openvino.orig/src/bindings/CMakeLists.txt
++++ os-openvino/src/bindings/CMakeLists.txt
+@@ -3,5 +3,5 @@
+ #
+ 
+ add_subdirectory(c)
+-add_subdirectory(js)
++#add_subdirectory(js)
+ add_subdirectory(python)
