@@ -37,6 +37,7 @@ struct weights_decompression_compile_params_t {
     bool broadcast_zero_points;
     size_t oc_size;
     size_t ic_internal_size;
+    data_type_t weights_dt;
     data_type_t decomp_buffer_dt;
 };
 
@@ -49,7 +50,9 @@ struct weights_decompression_runtime_params_t {
 };
 
 struct jit_weights_decompression_kernel_t {
-    void operator()(const weights_decompression_runtime_params_t *args) { assert(ker_); ker_(args); }
+    void operator()(const weights_decompression_runtime_params_t *args) { assert(ker_);
+        ker_(args);
+    }
 
     jit_weights_decompression_kernel_t(const weights_decompression_compile_params_t& jcp) : ker_(nullptr), jcp_(jcp) {}
     virtual ~jit_weights_decompression_kernel_t() {}
@@ -77,30 +80,36 @@ private:
     static constexpr int n_vregs = cpu_isa_traits<isa>::n_vregs;
 
     void generate() override;
+    void init_decomp_params(std::function<Vmm(int)> vmm_params, Xbyak::Reg64 reg_params, bool broadcast_values);
+    void load_weights(Vmm vmm_load, const Xbyak::Address& addr, int ic);
+    void store_weights(const Xbyak::Address& addr, Vmm vmm_store);
 
-    Vmm vmm_scales(int ocb, int ic) {
-        assert(ocb < unroll_factor);
-        int idx = ocb * jcp_.ic_internal_size + ic;
-        return Vmm(0 + idx);
+    Vmm vmm_scales(int ocb) {
+        return Vmm(unroll_factor + ocb);
     }
 
-    Vmm vmm_zero_points(int ocb, int ic) {
-        assert(ocb < unroll_factor);
-        return Vmm((unroll_factor + ocb) * jcp_.ic_internal_size + ic);
+    Vmm vmm_zero_points(int ocb) {
+        return Vmm(2 * unroll_factor + ocb);
     }
 
     Vmm vmm_weights(int ocb) {
         assert(ocb < unroll_factor);
-        return Vmm(2 * unroll_factor * jcp_.ic_internal_size + ocb);
+        return Vmm(ocb);
     }
 
     Vmm vmm_mask(int ic) {
         return Vmm(n_vregs - ic - 2);
     }
 
-    Vmm vmm_tmp() {
-        return Vmm(n_vregs - 1);
+    Vmm vmm_tmp(int idx) {
+        return Vmm(n_vregs - idx - 1);
     }
+
+    Vmm vmm_lookup() { return vmm_tmp(0); }
+    Vmm vmm_lookup_low() { return vmm_tmp(0); }
+    Vmm vmm_lookup_high() { return vmm_tmp(1); }
+    Vmm vmm_mask8() { return vmm_tmp(2); }
+    Vmm vmm_mask7() { return vmm_tmp(3); }
 
     Xbyak::Reg64 reg_weights = r8;
     Xbyak::Reg64 reg_decomp_buffer = r9;

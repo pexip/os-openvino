@@ -47,7 +47,7 @@ struct jit_brgemm_kernel_t : public jit_generator {
         , max_effective_vregs(
                   max_vregs - (brg.is_int8 && !brg.has_int8_vnni ? 2 : 0)
                             - (one_of(brg.dt_b, data_type::nf4) && brg.isa_impl == avx2 ? 5 : 0)
-                            - (one_of(brg.dt_b, data_type::nf4) ? 1 : 0)
+                            - (one_of(brg.dt_b, data_type::nf4) && brg.isa_impl != avx2 ? 1 : 0)
                             - (brg.with_wei_decomp_zero_points && brg.wei_decomp_zero_points_stride == 0 ? 1 : 0)) {
 
         // The implementation uses is_superset(), is_subset() utilities.
@@ -1930,7 +1930,10 @@ void jit_brgemm_kernel_t<isa, Wmm>::gemm_microkernel(int bd_block2,
                     uni_vmovups(vmm_mask8, ptr[reg_ptr]);
                     mov(reg_ptr, (size_t)mask7);
                     uni_vmovups(vmm_mask7, ptr[reg_ptr]);
-                    vmm_zero_points = Vmm(max_vregs - 5);
+                    if (brg.wei_decomp_zero_points_stride == 0)
+                        vmm_zero_points = Vmm(max_vregs - 6);
+                    else
+                        vmm_zero_points = Vmm(max_vregs - 5);
                 } else {
                     mov(reg_ptr, (size_t)lookup);
                     uni_vmovups(vmm_lookup, ptr[reg_ptr]);
@@ -2024,8 +2027,14 @@ void jit_brgemm_kernel_t<isa, Wmm>::gemm_microkernel(int bd_block2,
                         const auto bd_by_load_bytes
                                 = (bd >= bd_e - rows_by_load_bytes
                                         || brg.brgattr.wary_tail_read);
-                        broadcast(bcst(), A_offset(bd, rd),
-                                have_to_load_bytes && bd_by_load_bytes, brg.dt_a);
+                        if (brg.dt_a == data_type::bf16) {
+                            vpbroadcastw(bcst(), ptr[reg_aux_A + A_offset(bd, rd)]);
+                            uni_vpmovzxwd(bcst(), bcst());
+                            uni_vpslld(bcst(), bcst(), 16);
+                        } else {
+                            broadcast(bcst(), A_offset(bd, rd),
+                                    have_to_load_bytes && bd_by_load_bytes, brg.dt_a);
+                        }
                     }
                     if (prefetch_count_B < ld_block2) {
                         prefetcht0(ptr[reg_aux_B + B_offset(prefetch_count_B++, rd)
@@ -2041,10 +2050,9 @@ void jit_brgemm_kernel_t<isa, Wmm>::gemm_microkernel(int bd_block2,
                                 uni_vmulps(vmm, load(ld), bcst());
                         } else {
                             if (is_emdbd)
-                                uni_vfmadd231ps(vmm, load(ld),
-                                        ptr_b[reg_aux_A + A_offset(bd, rd)]);
+                                uni_vfmadd231ps(vmm, load(ld), ptr_b[reg_aux_A + A_offset(bd, rd)]);
                             else
-                                dot_product(vmm, load(ld), bcst());
+                                uni_vfmadd231ps(vmm, load(ld), bcst());
                         }
                     }
                 }
