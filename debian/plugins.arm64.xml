@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 <ie>
     <plugins>
-        <plugin location="/usr/lib/aarch64-linux-gnu/openvino-2023.2.0/libopenvino_arm_cpu_plugin.so" name="CUSTOM">
+        <plugin location="/usr/lib/aarch64-linux-gnu/openvino-2023.3.0/libopenvino_arm_cpu_plugin.so" name="CUSTOM">
         </plugin>
     </plugins>
 </ie>
