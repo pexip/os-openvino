@@ -14,46 +14,56 @@ Resolution,” <https://arxiv.org/abs/1807.06779>`__ 2018 24th
 International Conference on Pattern Recognition (ICPR), 2018,
 pp. 2777-2784, doi: 10.1109/ICPR.2018.8545760.
 
-.. note::
-
-   The Single Image Super Resolution (SISR) model used in this
+   **NOTE**: The Single Image Super Resolution (SISR) model used in this
    demo is not optimized for a video. Results may vary depending on the
    video.
 
 **Table of contents:**
 
-- `Preparation <#preparation>`__
 
-  - `Install requirements <#install-requirements>`__
-  - `Imports <#imports>`__
-  - `Settings <#settings>`__
+-  `Preparation <#preparation>`__
 
-    - `Select inference device <#select-inference-device>`__
+   -  `Install requirements <#install-requirements>`__
+   -  `Imports <#imports>`__
+   -  `Settings <#settings>`__
 
-  - `Functions <#functions>`__
+      -  `Select inference device <#select-inference-device>`__
 
-- `Load the Superresolution Model <#load-the-superresolution-model>`__
-- `Superresolution on Video <#superresolution-on-video>`__
+   -  `Functions <#functions>`__
 
-  - `Settings <#settings>`__
-  - `Download and Prepare Video <#download-and-prepare-video>`__
-  - `Do Inference <#do-inference>`__
-  - `Show Side-by-Side Video of Bicubic and Superresolution Version <#show-side-by-side-video-of-bicubic-and-superresolution-version>`__
+-  `Load the Superresolution
+   Model <#load-the-superresolution-model>`__
+-  `Superresolution on Video <#superresolution-on-video>`__
 
-Preparation
-###############################################################################################################################
+   -  `Settings <#settings>`__
+   -  `Download and Prepare
+      Video <#download-and-prepare-video>`__
+   -  `Do Inference <#do-inference>`__
+   -  `Show Side-by-Side Video of Bicubic and Superresolution
+      Version <#show-side-by-side-video-of-bicubic-and-superresolution-version>`__
 
-Install requirements
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Preparation 
+-----------------------------------------------------
+
+Install requirements 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: ipython3
 
-    !pip install -q "openvino==2023.1.0.dev20230811"
-    !pip install -q opencv-python
-    !pip install -q "pytube>=12.1.0"
+    %pip install -q "openvino>=2023.1.0"
+    %pip install -q opencv-python
+    %pip install -q "pytube>=12.1.0"
 
-Imports
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+.. parsed-literal::
+
+    Note: you may need to restart the kernel to use updated packages.
+    Note: you may need to restart the kernel to use updated packages.
+    Note: you may need to restart the kernel to use updated packages.
+
+
+Imports 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: ipython3
 
@@ -83,13 +93,13 @@ Imports
         path.parent.mkdir(parents=True, exist_ok=True)
         urllib.request.urlretrieve(url, path)
 
-Settings
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Settings 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Select inference device
--------------------------------------------------------------------------------------------------------------------------------
+Select inference device 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Select device from dropdown list for running inference using OpenVINO:
+select device from dropdown list for running inference using OpenVINO
 
 .. code:: ipython3
 
@@ -143,8 +153,8 @@ Select device from dropdown list for running inference using OpenVINO:
     single-image-super-resolution-1032 already downloaded to model
 
 
-Functions
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Functions 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: ipython3
 
@@ -162,8 +172,8 @@ Functions
         result = result.astype(np.uint8)
         return result
 
-Load the Superresolution Model
-###############################################################################################################################
+Load the Superresolution Model 
+------------------------------------------------------------------------
 
 Load the model in OpenVINO Runtime with ``core.read_model`` and compile
 it for the specified device with ``core.compile_model``.
@@ -211,8 +221,8 @@ resolution version of the image in 1920x1080.
     The image sides are upsampled by a factor of 4. The new image is 16 times as large as the original image
 
 
-Superresolution on Video
-###############################################################################################################################
+Superresolution on Video 
+------------------------------------------------------------------
 
 Download a YouTube video with ``PyTube`` and enhance the video quality
 with superresolution.
@@ -220,14 +230,12 @@ with superresolution.
 By default, only the first 100 frames of the video are processed. Change
 ``NUM_FRAMES`` in the cell below to modify this.
 
-.. note::
-
-   The resulting video does not contain audio. The input video
+   **NOTE**: The resulting video does not contain audio. The input video
    should be a landscape video and have an input resolution of 360p
    (640x360) for the 1032 model, or 480p (720x480) for the 1033 model.
 
-Settings
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Settings 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: ipython3
 
@@ -240,8 +248,8 @@ Settings
     # If you have FFMPEG installed, you can change FOURCC to `*"THEO"` to improve video writing speed.
     FOURCC = cv2.VideoWriter_fourcc(*"vp09")
 
-Download and Prepare Video
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Download and Prepare Video 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: ipython3
 
@@ -327,8 +335,8 @@ the superresolution side by side.
         frameSize=(target_width * 2, target_height),
     )
 
-Do Inference
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Do Inference 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Read video frames and enhance them with superresolution. Save the
 superresolution video, the bicubic video and the comparison video to a
@@ -444,17 +452,17 @@ video.
 
 .. parsed-literal::
 
-    Processed frame 100. Inference time: 0.05 seconds (19.34 FPS)
+    Processed frame 100. Inference time: 0.05 seconds (19.45 FPS)
 
 
 .. parsed-literal::
 
     Video's saved to output directory.
-    Processed 100 frames in 235.00 seconds. Total FPS (including video processing): 0.43. Inference FPS: 17.29.
+    Processed 100 frames in 235.05 seconds. Total FPS (including video processing): 0.43. Inference FPS: 18.35.
 
 
-Show Side-by-Side Video of Bicubic and Superresolution Version
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Show Side-by-Side Video of Bicubic and Superresolution Version 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: ipython3
 

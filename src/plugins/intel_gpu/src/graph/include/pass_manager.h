@@ -149,7 +149,6 @@ public:
 private:
     void run(program& p) override;
     void handle_quantize_node(program& p, quantize_node& quantize_node);
-    void prepare_packed_quantize(program& p, quantize_node& quantize_node);
     void prepare_dequantize_merge(program& p, eltwise_node& eltwise_node);
     void remove_fake_reorders(program& p, reorder_node& reorder_node);
     void prepare_asymmetric_quantization(program& p, convolution_node& convolution_node);
@@ -410,6 +409,14 @@ public:
 class reorder_transfer : public base_pass {
 public:
     reorder_transfer() : base_pass("reorder_transfer") {}
+
+private:
+    void run(program& p) override;
+};
+
+class dynamic_shape_gather_opts : public base_pass {
+public:
+    dynamic_shape_gather_opts() : base_pass("dynamic_shape_gather_opts") {}
 
 private:
     void run(program& p) override;
