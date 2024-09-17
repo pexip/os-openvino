@@ -1,3 +1,9 @@
+openvino (2023.3.0+repack1-0+pexip24u1) pexip; urgency=medium
+
+  * New upstream release
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Tue, 17 Sep 2024 16:28:44 +0100
+
 openvino (2023.2.0+repack1-0+pexip24u6) pexip; urgency=medium
 
   * Patch header files for compatibility with ICC
