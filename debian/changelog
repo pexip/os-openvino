@@ -1,3 +1,10 @@
+openvino (2023.3.0+repack1-0+pexip24u2) pexip; urgency=medium
+
+  * Change CMAKE_BUILD_TYPE to RelWithDebInfo to get debug symbols too
+  * Disable dh_dwz as it fails
+
+ -- Steve McIntyre <steve.mcintyre@pexip.com>  Fri, 20 Sep 2024 11:29:19 +0100
+
 openvino (2023.3.0+repack1-0+pexip24u1) pexip; urgency=medium
 
   * New upstream release
