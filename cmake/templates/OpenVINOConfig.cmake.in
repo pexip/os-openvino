@@ -176,7 +176,7 @@ macro(_ov_find_tbb)
 
             set(enable_system_tbb "@ENABLE_SYSTEM_TBB@")
             if(NOT enable_system_tbb)
-                set_and_check(_tbb_dir "@PACKAGE_OV_TBB_DIR@")
+            
 
                 # see https://stackoverflow.com/questions/28070810/cmake-generate-error-on-windows-as-it-uses-as-escape-seq
                 if(DEFINED ENV{TBBROOT})
@@ -196,7 +196,7 @@ macro(_ov_find_tbb)
                         # for custom TBB exposed via cmake -DTBBROOT=<custom TBB root>
                         "${TBBROOT}/cmake"
                         # _tbb_dir points to TBB_DIR (custom | temp | system) used to build OpenVINO
-                        ${_tbb_dir}
+                
                     CMAKE_FIND_ROOT_PATH_BOTH
                     NO_PACKAGE_ROOT_PATH
                     NO_SYSTEM_ENVIRONMENT_PATH
@@ -204,7 +204,7 @@ macro(_ov_find_tbb)
                     NO_CMAKE_SYSTEM_PATH
                     ${_no_cmake_install_prefix}
                     NO_CMAKE_SYSTEM_PACKAGE_REGISTRY)
-                unset(_tbb_dir)
+                
                 unset(_no_cmake_install_prefix)
             endif()
             unset(enable_system_tbb)
