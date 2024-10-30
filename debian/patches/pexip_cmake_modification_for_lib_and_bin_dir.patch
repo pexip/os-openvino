@@ -1,0 +1,55 @@
+From 8d8b70fd6ec3853b15ebfafb3244b68febc8f694 Mon Sep 17 00:00:00 2001
+From: Havard Graff <havard@pexip.com>
+Date: Wed, 30 Oct 2024 15:48:52 +0100
+Subject: [PATCH] cmake: pexip modification for lib and bin dir
+
+---
+ .../developer_package/packaging/archive.cmake | 24 +++++++++----------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/cmake/developer_package/packaging/archive.cmake b/cmake/developer_package/packaging/archive.cmake
+index 1a39aa1e4..f29425b83 100644
+--- a/cmake/developer_package/packaging/archive.cmake
++++ b/cmake/developer_package/packaging/archive.cmake
+@@ -22,9 +22,9 @@ macro(ov_archive_cpack_set_dirs)
+     # common "archive" package locations
+     # TODO: move current variables to OpenVINO specific locations
+     set(OV_CPACK_INCLUDEDIR include)
+-    set(OV_CPACK_IE_CMAKEDIR cmake)
+-    set(OV_CPACK_NGRAPH_CMAKEDIR cmake)
+-    set(OV_CPACK_OPENVINO_CMAKEDIR cmake)
++    set(OV_CPACK_IE_CMAKEDIR lib/cmake)
++    set(OV_CPACK_NGRAPH_CMAKEDIR lib/cmake)
++    set(OV_CPACK_OPENVINO_CMAKEDIR lib/cmake)
+     set(OV_CPACK_DOCDIR docs)
+     set(OV_CPACK_LICENSESDIR licenses)
+     set(OV_CPACK_SAMPLESDIR samples)
+@@ -40,17 +40,17 @@ macro(ov_archive_cpack_set_dirs)
+     endif()
+ 
+     if(WIN32)
+-        set(OV_CPACK_LIBRARYDIR lib/${ARCH_FOLDER}/${build_type})
+-        set(OV_CPACK_RUNTIMEDIR bin/${ARCH_FOLDER}/${build_type})
+-        set(OV_CPACK_ARCHIVEDIR lib/${ARCH_FOLDER}/${build_type})
++        set(OV_CPACK_LIBRARYDIR lib)
++        set(OV_CPACK_RUNTIMEDIR bin)
++        set(OV_CPACK_ARCHIVEDIR lib)
+     elseif(APPLE)
+-        set(OV_CPACK_LIBRARYDIR lib/${ARCH_FOLDER}/${build_type})
+-        set(OV_CPACK_RUNTIMEDIR lib/${ARCH_FOLDER}/${build_type})
+-        set(OV_CPACK_ARCHIVEDIR lib/${ARCH_FOLDER}/${build_type})
++        set(OV_CPACK_LIBRARYDIR lib)
++        set(OV_CPACK_RUNTIMEDIR lib)
++        set(OV_CPACK_ARCHIVEDIR lib)
+     else()
+-        set(OV_CPACK_LIBRARYDIR lib/${ARCH_FOLDER})
+-        set(OV_CPACK_RUNTIMEDIR lib/${ARCH_FOLDER})
+-        set(OV_CPACK_ARCHIVEDIR lib/${ARCH_FOLDER})
++        set(OV_CPACK_LIBRARYDIR lib)
++        set(OV_CPACK_RUNTIMEDIR lib)
++        set(OV_CPACK_ARCHIVEDIR lib)
+     endif()
+     set(OV_CPACK_PLUGINSDIR ${OV_CPACK_RUNTIMEDIR})
+ endmacro()
+-- 
+2.46.0
