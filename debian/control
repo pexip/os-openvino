@@ -4,13 +4,13 @@ Priority: optional
 Maintainer: Pexip AS <packaging@pexip.com>
 Standards-Version: 4.3.0
 Build-Depends:
- clang-14,
+ clang-19,
  cmake (>= 3.13),
  cython3,
  debhelper (>> 10~),
  git,
  libade-dev,
- libclang-14-dev,
+ libclang-19-dev,
  libflatbuffers-dev,
  libonnx-dev,
  libprotobuf-dev,
