@@ -1,0 +1,13 @@
+Index: openvino/src/plugins/intel_cpu/thirdparty/ComputeLibrary/arm_compute/core/utils/logging/IPrinter.h
+===================================================================
+--- openvino.orig/src/plugins/intel_cpu/thirdparty/ComputeLibrary/arm_compute/core/utils/logging/IPrinter.h
++++ openvino/src/plugins/intel_cpu/thirdparty/ComputeLibrary/arm_compute/core/utils/logging/IPrinter.h
+@@ -24,6 +24,8 @@
+ #ifndef ARM_COMPUTE_LOGGING_PRINTER_H
+ #define ARM_COMPUTE_LOGGING_PRINTER_H
+ 
++#include <string>
++
+ #include "support/Mutex.h"
+ 
+ namespace arm_compute

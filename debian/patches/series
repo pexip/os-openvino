@@ -11,3 +11,4 @@ pexip_no_thirdparty_install.patch
 pexip_fix_pc_file.patch
 pexip_icc_header_workaround.patch
 pexip_disable_javascript.patch
+pexip_arm_compute_fixup.patch
