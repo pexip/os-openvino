@@ -1,3 +1,5 @@
+Do not build the docs packages as we do not use them.
+
 Index: os-openvino/CMakeLists.txt
 ===================================================================
 --- os-openvino.orig/CMakeLists.txt

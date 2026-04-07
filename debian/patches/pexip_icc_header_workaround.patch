@@ -1,8 +1,4 @@
-commit a37825cb0ab8f1e281d5c77a8216453786e39a4f
-Author: Havard Graff <havard@pexip.com>
-Date:   Tue May 14 18:48:53 2024 +0200
-
-    inference/runtime/properties: work around bug in ICC
+Work around a bug in ICC's C++ string handling.
 
 diff --git a/src/inference/include/openvino/runtime/properties.hpp b/src/inference/include/openvino/runtime/properties.hpp
 index f28e46de..d29f778e 100644

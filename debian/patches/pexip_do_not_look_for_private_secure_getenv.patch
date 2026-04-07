@@ -1,3 +1,5 @@
+Do not look for private symbols in the C library
+
 Index: os-openvino/thirdparty/ocl/icd_loader/CMakeLists.txt
 ===================================================================
 --- os-openvino.orig/thirdparty/ocl/icd_loader/CMakeLists.txt

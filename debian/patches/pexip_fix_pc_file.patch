@@ -1,3 +1,5 @@
+Fix up pkgconfig file paths to match FHS
+
 Index: os-openvino/cmake/developer_package/packaging/archive.cmake
 ===================================================================
 --- os-openvino.orig/cmake/developer_package/packaging/archive.cmake

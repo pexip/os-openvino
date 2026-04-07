@@ -1,3 +1,5 @@
+Do not build the javascript bindings as we do not use them
+
 Index: os-openvino/src/bindings/CMakeLists.txt
 ===================================================================
 --- os-openvino.orig/src/bindings/CMakeLists.txt

@@ -1,3 +1,5 @@
+Add missing C++ header include in ARM code
+
 Index: openvino/src/plugins/intel_cpu/thirdparty/ComputeLibrary/arm_compute/core/utils/logging/IPrinter.h
 ===================================================================
 --- openvino.orig/src/plugins/intel_cpu/thirdparty/ComputeLibrary/arm_compute/core/utils/logging/IPrinter.h
