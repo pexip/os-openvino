@@ -1,1 +1,2 @@
 pexip_cmake_modification_for_lib_and_bin_dir.patch
+pexip_enable_pkgconfig_for_windows.patch
