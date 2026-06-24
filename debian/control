@@ -37,6 +37,9 @@ Description: OpenVINO Deep Learning Toolkit
  and non-vision workloads across Intel® hardware, maximizing performance.
  It accelerates applications with high-performance, AI and deep learning
  inference deployed from edge to cloud.
+X-Pexip-Note: The OpenVino package is PexOS-specific.  It has been updated
+ from upstream to avoid including vendored code which already ships in
+ PexOS (instead, dynamically linking the existing libraries).
 
 Package: openvino-dev
 Architecture: any
