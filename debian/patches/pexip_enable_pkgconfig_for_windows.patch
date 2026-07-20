@@ -5,9 +5,9 @@ Subject: [PATCH] cmake: enable pkgconfig file generation for Windows platform
 
  cmake/features.cmake           |  2 +-
  cmake/templates/openvino.pc.in |  2 +-
- src/cmake/openvino.cmake       | 16 +++++++++++++++-
+ src/cmake/openvino.cmake       | 25 ++++++++++++++++++++++---
  src/cmake/pkg_config_gen.cmake |  3 ++-
- 4 files changed, 19 insertions(+), 4 deletions(-)
+ 4 files changed, 26 insertions(+), 6 deletions(-)
 
 diff --git a/cmake/features.cmake b/cmake/features.cmake
 index 2a970e572..8f5cb69a8 100644
@@ -33,13 +33,15 @@ index 958a8bbd6..8453e2542 100644
 -Libs.private: -ldl -lm -lpthread -lrt
 +Libs.private: @PKGCONFIG_OpenVINO_PRIVATE_LIBS@
 diff --git a/src/cmake/openvino.cmake b/src/cmake/openvino.cmake
-index 72fecabd9..56f4be19f 100644
+index 72fecabd9..eeffd911c 100644
 --- a/src/cmake/openvino.cmake
 +++ b/src/cmake/openvino.cmake
-@@ -283,8 +283,21 @@ if(ENABLE_PKGCONFIG_GEN)
+@@ -283,8 +283,26 @@ if(ENABLE_PKGCONFIG_GEN)
          endif()
      endif()
  
+-    # define relative paths
+-    file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "/${OV_CPACK_RUNTIMEDIR}/pkgconfig" "/")
 +    # fill in PKGCONFIG_OpenVINO_PRIVATE_LIBS (platform-specific system libraries)
 +    if(WIN32)
 +        set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "")
@@ -47,19 +49,23 @@ index 72fecabd9..56f4be19f 100644
 +        set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "-ldl -lm -lpthread -lrt")
 +    endif()
 +
-     # define relative paths
--    file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "/${OV_CPACK_RUNTIMEDIR}/pkgconfig" "/")
-+    # Use a dummy absolute root that works on all platforms. On Windows,
-+    # file(RELATIVE_PATH) requires drive-letter paths; bare "/" is rejected.
++    # define pkg-config install location and relative paths
 +    if(WIN32)
-+        file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "C:/${OV_CPACK_RUNTIMEDIR}/pkgconfig" "C:/")
++        # On Windows the runtime directory is a deeply nested, config-specific
++        # location (e.g. bin/<arch>/<config>). Install openvino.pc into the
++        # standard, discoverable lib/pkgconfig directory under the install
++        # prefix instead, so pkg-config can find it out of the box.
++        set(PKGCONFIG_OpenVINO_INSTALL_DIR "lib/pkgconfig")
++        # file(RELATIVE_PATH) requires drive-letter paths on Windows; bare "/" is rejected.
++        file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "C:/${PKGCONFIG_OpenVINO_INSTALL_DIR}" "C:/")
 +    else()
-+        file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "/${OV_CPACK_RUNTIMEDIR}/pkgconfig" "/")
++        set(PKGCONFIG_OpenVINO_INSTALL_DIR "${OV_CPACK_RUNTIMEDIR}/pkgconfig")
++        file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "/${PKGCONFIG_OpenVINO_INSTALL_DIR}" "/")
 +    endif()
  
      set(pkgconfig_in "${OpenVINO_SOURCE_DIR}/cmake/templates/openvino.pc.in")
      if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.20 AND OV_GENERATOR_MULTI_CONFIG)
-@@ -310,6 +323,7 @@ if(ENABLE_PKGCONFIG_GEN)
+@@ -310,13 +328,14 @@ if(ENABLE_PKGCONFIG_GEN)
                  -D PKGCONFIG_OpenVINO_DEFINITIONS=${PKGCONFIG_OpenVINO_DEFINITIONS}
                  -D PKGCONFIG_OpenVINO_FRONTENDS=${PKGCONFIG_OpenVINO_FRONTENDS}
                  -D PKGCONFIG_OpenVINO_PRIVATE_DEPS=${PKGCONFIG_OpenVINO_PRIVATE_DEPS}
@@ -67,6 +73,14 @@ index 72fecabd9..56f4be19f 100644
                  -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/pkg_config_gen.cmake"
          COMMAND "${PKG_CONFIG_EXECUTABLE}" "${pkgconfig_option}" "${pkgconfig_out}"
          COMMENT "[pkg-config] creation and validation of openvino.pc"
+         VERBATIM)
+ 
+     install(FILES "${pkgconfig_out}"
+-            DESTINATION "${OV_CPACK_RUNTIMEDIR}/pkgconfig"
++            DESTINATION "${PKGCONFIG_OpenVINO_INSTALL_DIR}"
+             COMPONENT ${OV_CPACK_COMP_CORE_DEV}
+             ${OV_CPACK_COMP_CORE_DEV_EXCLUDE_ALL})
+ endif()
 diff --git a/src/cmake/pkg_config_gen.cmake b/src/cmake/pkg_config_gen.cmake
 index b57c37957..b1aa2383a 100644
 --- a/src/cmake/pkg_config_gen.cmake
