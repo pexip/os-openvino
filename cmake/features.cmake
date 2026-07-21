@@ -67,7 +67,7 @@ Usage: -DSELECTIVE_BUILD=ON -DSELECTIVE_BUILD_STAT=/path/*.csv" OFF
 ov_option (ENABLE_DOCS "Build docs using Doxygen" OFF)
 
 find_package(PkgConfig QUIET)
-ov_dependent_option (ENABLE_PKGCONFIG_GEN "Enable openvino.pc pkg-config file generation" ON "LINUX OR APPLE;PkgConfig_FOUND;BUILD_SHARED_LIBS" OFF)
+ov_dependent_option (ENABLE_PKGCONFIG_GEN "Enable openvino.pc pkg-config file generation" ON "LINUX OR APPLE OR WIN32;PkgConfig_FOUND;BUILD_SHARED_LIBS" OFF)
 
 #
 # OpenVINO Runtime specific options

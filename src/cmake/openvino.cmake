@@ -257,9 +257,9 @@ if(ENABLE_PKGCONFIG_GEN)
 
     foreach(frontend IN LISTS PKGCONFIG_OpenVINO_FRONTENDS_LIST)
         if(PKGCONFIG_OpenVINO_FRONTENDS)
-            set(PKGCONFIG_OpenVINO_FRONTENDS "${PKGCONFIG_OpenVINO_FRONTENDS} -l${frontend}")
+            set(PKGCONFIG_OpenVINO_FRONTENDS "${PKGCONFIG_OpenVINO_FRONTENDS} -l${frontend}${OV_BUILD_POSTFIX}")
         else()
-            set(PKGCONFIG_OpenVINO_FRONTENDS "-l${frontend}")
+            set(PKGCONFIG_OpenVINO_FRONTENDS "-l${frontend}${OV_BUILD_POSTFIX}")
         endif()
     endforeach()
 
@@ -283,8 +283,32 @@ if(ENABLE_PKGCONFIG_GEN)
         endif()
     endif()
 
-    # define relative paths
-    file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "/${OV_CPACK_RUNTIMEDIR}/pkgconfig" "/")
+    # fill in PKGCONFIG_OpenVINO_PRIVATE_LIBS (platform-specific system libraries)
+    if(WIN32)
+        set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "")
+    else()
+        set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "-ldl -lm -lpthread -lrt")
+    endif()
+
+    # fill in the per-configuration library name postfix (e.g. "d" for Debug on
+    # Windows / macOS). This must be appended to the openvino / openvino_c
+    # library names so that consumers of Debug builds link against the actual
+    # installed import libraries (e.g. openvinod.lib, openvino_cd.lib).
+    set(PKGCONFIG_OpenVINO_LIB_POSTFIX "${OV_BUILD_POSTFIX}")
+
+    # define pkg-config install location and relative paths
+    if(WIN32)
+        # On Windows the runtime directory is a deeply nested, config-specific
+        # location (e.g. bin/<arch>/<config>). Install openvino.pc into the
+        # standard, discoverable lib/pkgconfig directory under the install
+        # prefix instead, so pkg-config can find it out of the box.
+        set(PKGCONFIG_OpenVINO_INSTALL_DIR "lib/pkgconfig")
+        # file(RELATIVE_PATH) requires drive-letter paths on Windows; bare "/" is rejected.
+        file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "C:/${PKGCONFIG_OpenVINO_INSTALL_DIR}" "C:/")
+    else()
+        set(PKGCONFIG_OpenVINO_INSTALL_DIR "${OV_CPACK_RUNTIMEDIR}/pkgconfig")
+        file(RELATIVE_PATH PKGCONFIG_OpenVINO_PREFIX "/${PKGCONFIG_OpenVINO_INSTALL_DIR}" "/")
+    endif()
 
     set(pkgconfig_in "${OpenVINO_SOURCE_DIR}/cmake/templates/openvino.pc.in")
     if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.20 AND OV_GENERATOR_MULTI_CONFIG)
@@ -310,13 +334,15 @@ if(ENABLE_PKGCONFIG_GEN)
                 -D PKGCONFIG_OpenVINO_DEFINITIONS=${PKGCONFIG_OpenVINO_DEFINITIONS}
                 -D PKGCONFIG_OpenVINO_FRONTENDS=${PKGCONFIG_OpenVINO_FRONTENDS}
                 -D PKGCONFIG_OpenVINO_PRIVATE_DEPS=${PKGCONFIG_OpenVINO_PRIVATE_DEPS}
+                -D PKGCONFIG_OpenVINO_PRIVATE_LIBS=${PKGCONFIG_OpenVINO_PRIVATE_LIBS}
+                -D PKGCONFIG_OpenVINO_LIB_POSTFIX=${PKGCONFIG_OpenVINO_LIB_POSTFIX}
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/pkg_config_gen.cmake"
         COMMAND "${PKG_CONFIG_EXECUTABLE}" "${pkgconfig_option}" "${pkgconfig_out}"
         COMMENT "[pkg-config] creation and validation of openvino.pc"
         VERBATIM)
 
     install(FILES "${pkgconfig_out}"
-            DESTINATION "${OV_CPACK_RUNTIMEDIR}/pkgconfig"
+            DESTINATION "${PKGCONFIG_OpenVINO_INSTALL_DIR}"
             COMPONENT ${OV_CPACK_COMP_CORE_DEV}
             ${OV_CPACK_COMP_CORE_DEV_EXCLUDE_ALL})
 endif()
