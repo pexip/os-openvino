@@ -7,9 +7,7 @@ foreach(var PKG_CONFIG_IN_FILE PKG_CONFIG_OUT_FILE
             OV_CPACK_INCLUDEDIR OpenVINO_VERSION
             PKGCONFIG_OpenVINO_DEFINITIONS
             PKGCONFIG_OpenVINO_FRONTENDS
-            PKGCONFIG_OpenVINO_PRIVATE_DEPS
-            PKGCONFIG_OpenVINO_PRIVATE_LIBS
-            PKGCONFIG_OpenVINO_LIB_POSTFIX)
+            PKGCONFIG_OpenVINO_PRIVATE_DEPS)
     if(NOT DEFINED ${var})
         message(FATAL_ERROR "Variable ${var} is not defined")
     endif()

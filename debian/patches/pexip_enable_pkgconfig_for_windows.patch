@@ -4,10 +4,10 @@ Date: Mon, 16 Jun 2025 13:09:00 +0000
 Subject: [PATCH] cmake: enable pkgconfig file generation for Windows platform
 
  cmake/features.cmake           |  2 +-
- cmake/templates/openvino.pc.in |  4 ++--
- src/cmake/openvino.cmake       | 36 +++++++++++++++++++++++++++++++-----
- src/cmake/pkg_config_gen.cmake |  4 +++-
- 4 files changed, 37 insertions(+), 9 deletions(-)
+ cmake/templates/openvino.pc.in |  5 +++--
+ src/cmake/openvino.cmake       | 51 +++++++++++++++++++++++++++++++-----
+ src/cmake/pkg_config_gen.cmake |  5 ++++-
+ 4 files changed, 52 insertions(+), 11 deletions(-)
 
 diff --git a/cmake/features.cmake b/cmake/features.cmake
 index 2a970e572..8f5cb69a8 100644
@@ -23,22 +23,24 @@ index 2a970e572..8f5cb69a8 100644
  #
  # OpenVINO Runtime specific options
 diff --git a/cmake/templates/openvino.pc.in b/cmake/templates/openvino.pc.in
-index 958a8bbd6..d25dd4573 100644
+index 958a8bbd6..6b5ae22de 100644
 --- a/cmake/templates/openvino.pc.in
 +++ b/cmake/templates/openvino.pc.in
-@@ -18,5 +18,5 @@ URL: https://docs.openvino.ai/latest/index.html
+@@ -17,6 +17,7 @@ Description: OpenVINO™ Toolkit
+ URL: https://docs.openvino.ai/latest/index.html
  Version: @OpenVINO_VERSION@
  Conflicts: openvino < @OpenVINO_VERSION@
++Requires.private: @PKGCONFIG_OpenVINO_REQUIRES@
  Cflags: -I${includedir_old} -I${includedir_new} @PKGCONFIG_OpenVINO_DEFINITIONS@
 -Libs: -L${libdir} @PKGCONFIG_OpenVINO_FRONTENDS@ -lopenvino_c -lopenvino @PKGCONFIG_OpenVINO_PRIVATE_DEPS@
 -Libs.private: -ldl -lm -lpthread -lrt
 +Libs: -L${libdir} @PKGCONFIG_OpenVINO_FRONTENDS@ -lopenvino_c@PKGCONFIG_OpenVINO_LIB_POSTFIX@ -lopenvino@PKGCONFIG_OpenVINO_LIB_POSTFIX@ @PKGCONFIG_OpenVINO_PRIVATE_DEPS@
 +Libs.private: @PKGCONFIG_OpenVINO_PRIVATE_LIBS@
 diff --git a/src/cmake/openvino.cmake b/src/cmake/openvino.cmake
-index 72fecabd9..20dee6ca4 100644
+index 72fecabd9..c1a39ae9d 100644
 --- a/src/cmake/openvino.cmake
 +++ b/src/cmake/openvino.cmake
-@@ -257,9 +257,9 @@ if(ENABLE_PKGCONFIG_GEN)
+@@ -257,16 +257,24 @@ if(ENABLE_PKGCONFIG_GEN)
  
      foreach(frontend IN LISTS PKGCONFIG_OpenVINO_FRONTENDS_LIST)
          if(PKGCONFIG_OpenVINO_FRONTENDS)
@@ -50,7 +52,34 @@ index 72fecabd9..20dee6ca4 100644
          endif()
      endforeach()
  
-@@ -283,8 +283,32 @@ if(ENABLE_PKGCONFIG_GEN)
+-    # fill in PKGCONFIG_OpenVINO_PRIVATE_DEPS
++    # fill in PKGCONFIG_OpenVINO_PRIVATE_DEPS and PKGCONFIG_OpenVINO_REQUIRES
++    #
++    # System dependencies (TBB, pugixml) ship their own pkg-config files, so we
++    # advertise them through the "Requires" field and let pkg-config resolve the
++    # actual libraries for us instead of hard-coding "-ltbb"/"-lpugixml" into
++    # "Libs". This is required on Windows, where the debug configuration installs
++    # differently-named import libraries (e.g. tbb12_debug): resolving them via
++    # each dependency's own .pc file selects the correct one automatically.
++    set(PKGCONFIG_OpenVINO_REQUIRES "")
+ 
+     if(ENABLE_SYSTEM_TBB)
+-        set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "-ltbb")
++        set(PKGCONFIG_OpenVINO_REQUIRES "tbb")
+     elseif(TBB_FOUND)
+         if(NOT TBB_LIB_INSTALL_DIR)
+             message(FATAL_ERROR "Internal error: variable 'TBB_LIB_INSTALL_DIR' is not defined")
+@@ -276,15 +284,39 @@ if(ENABLE_PKGCONFIG_GEN)
+     endif()
+ 
+     if(ENABLE_SYSTEM_PUGIXML)
+-        if(PKGCONFIG_OpenVINO_PRIVATE_DEPS)
+-            set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -lpugixml")
++        if(PKGCONFIG_OpenVINO_REQUIRES)
++            set(PKGCONFIG_OpenVINO_REQUIRES "${PKGCONFIG_OpenVINO_REQUIRES} pugixml")
+         else()
+-            set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "-lpugixml")
++            set(PKGCONFIG_OpenVINO_REQUIRES "pugixml")
          endif()
      endif()
  
@@ -85,10 +114,11 @@ index 72fecabd9..20dee6ca4 100644
  
      set(pkgconfig_in "${OpenVINO_SOURCE_DIR}/cmake/templates/openvino.pc.in")
      if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.20 AND OV_GENERATOR_MULTI_CONFIG)
-@@ -310,13 +334,15 @@ if(ENABLE_PKGCONFIG_GEN)
+@@ -310,13 +342,16 @@ if(ENABLE_PKGCONFIG_GEN)
                  -D PKGCONFIG_OpenVINO_DEFINITIONS=${PKGCONFIG_OpenVINO_DEFINITIONS}
                  -D PKGCONFIG_OpenVINO_FRONTENDS=${PKGCONFIG_OpenVINO_FRONTENDS}
                  -D PKGCONFIG_OpenVINO_PRIVATE_DEPS=${PKGCONFIG_OpenVINO_PRIVATE_DEPS}
++                -D PKGCONFIG_OpenVINO_REQUIRES=${PKGCONFIG_OpenVINO_REQUIRES}
 +                -D PKGCONFIG_OpenVINO_PRIVATE_LIBS=${PKGCONFIG_OpenVINO_PRIVATE_LIBS}
 +                -D PKGCONFIG_OpenVINO_LIB_POSTFIX=${PKGCONFIG_OpenVINO_LIB_POSTFIX}
                  -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/pkg_config_gen.cmake"
@@ -103,15 +133,16 @@ index 72fecabd9..20dee6ca4 100644
              ${OV_CPACK_COMP_CORE_DEV_EXCLUDE_ALL})
  endif()
 diff --git a/src/cmake/pkg_config_gen.cmake b/src/cmake/pkg_config_gen.cmake
-index b57c37957..9581477ad 100644
+index b57c37957..394677a32 100644
 --- a/src/cmake/pkg_config_gen.cmake
 +++ b/src/cmake/pkg_config_gen.cmake
-@@ -7,7 +7,9 @@ foreach(var PKG_CONFIG_IN_FILE PKG_CONFIG_OUT_FILE
+@@ -7,7 +7,10 @@ foreach(var PKG_CONFIG_IN_FILE PKG_CONFIG_OUT_FILE
              OV_CPACK_INCLUDEDIR OpenVINO_VERSION
              PKGCONFIG_OpenVINO_DEFINITIONS
              PKGCONFIG_OpenVINO_FRONTENDS
 -            PKGCONFIG_OpenVINO_PRIVATE_DEPS)
 +            PKGCONFIG_OpenVINO_PRIVATE_DEPS
++            PKGCONFIG_OpenVINO_REQUIRES
 +            PKGCONFIG_OpenVINO_PRIVATE_LIBS
 +            PKGCONFIG_OpenVINO_LIB_POSTFIX)
      if(NOT DEFINED ${var})
