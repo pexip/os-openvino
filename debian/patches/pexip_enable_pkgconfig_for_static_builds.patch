@@ -1,0 +1,150 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Tulio Beloqui <tulio@pexip.com>
+Date: Sun, 27 Jul 2026 06:40:00 +0000
+Subject: [PATCH] cmake: enable pkgconfig file generation for static builds
+
+For static builds, consumers linking against libopenvino.a need the
+transitive static library dependencies (openvino_util, openvino_reference,
+openvino_builders, openvino_shape_inference) listed in the Libs: line of
+the .pc file. Also conditionally adds pugixml when not using system pugixml.
+---
+ cmake/features.cmake           |  2 +-
+ cmake/templates/openvino.pc.in |  3 ++-
+ src/cmake/openvino.cmake       | 55 +++++++++++++++++++++++++++++++++++++++---
+ src/cmake/pkg_config_gen.cmake |  2 ++
+ 4 files changed, 57 insertions(+), 5 deletions(-)
+
+--- a/b/cmake/features.cmake	2026-07-27 13:11:04.321766828 +0000
++++ b/cmake/features.cmake	2026-07-27 13:11:11.830067505 +0000
+@@ -67,7 +67,7 @@
+ ov_option (ENABLE_DOCS "Build docs using Doxygen" OFF)
+ 
+ find_package(PkgConfig QUIET)
+-ov_dependent_option (ENABLE_PKGCONFIG_GEN "Enable openvino.pc pkg-config file generation" ON "LINUX OR APPLE OR WIN32;PkgConfig_FOUND;BUILD_SHARED_LIBS" OFF)
++ov_dependent_option (ENABLE_PKGCONFIG_GEN "Enable openvino.pc pkg-config file generation" ON "LINUX OR APPLE OR WIN32;PkgConfig_FOUND" OFF)
+ 
+ #
+ # OpenVINO Runtime specific options
+--- a/b/cmake/templates/openvino.pc.in	2026-07-27 13:11:04.323268500 +0000
++++ b/cmake/templates/openvino.pc.in	2026-07-27 13:11:11.830067505 +0000
+@@ -17,7 +17,8 @@
+ URL: https://docs.openvino.ai/latest/index.html
+ Version: @OpenVINO_VERSION@
+ Conflicts: openvino < @OpenVINO_VERSION@
+-Requires.private: @PKGCONFIG_OpenVINO_REQUIRES@
++Requires: @PKGCONFIG_OpenVINO_REQUIRES_PUBLIC@
++Requires.private: @PKGCONFIG_OpenVINO_REQUIRES_PRIVATE@
+ Cflags: -I${includedir_old} -I${includedir_new} @PKGCONFIG_OpenVINO_DEFINITIONS@
+ Libs: -L${libdir} @PKGCONFIG_OpenVINO_FRONTENDS@ -lopenvino_c@PKGCONFIG_OpenVINO_LIB_POSTFIX@ -lopenvino@PKGCONFIG_OpenVINO_LIB_POSTFIX@ @PKGCONFIG_OpenVINO_PRIVATE_DEPS@
+ Libs.private: @PKGCONFIG_OpenVINO_PRIVATE_LIBS@
+--- a/b/src/cmake/openvino.cmake	2026-07-27 13:11:04.324771934 +0000
++++ b/src/cmake/openvino.cmake	2026-07-27 13:11:45.392794572 +0000
+@@ -44,9 +44,7 @@
+ target_link_libraries(${TARGET_NAME} PRIVATE openvino::reference
+                                              openvino::builders
+                                              openvino::shape_inference
+-                                             openvino::pugixml
+-                                             ${CMAKE_DL_LIBS}
+-                                             Threads::Threads)
++                                             openvino::pugixml)
+ 
+ if (TBBBIND_2_5_FOUND)
+     target_link_libraries(${TARGET_NAME} PRIVATE ${TBBBIND_2_5_IMPORTED_TARGETS})
+@@ -55,6 +53,17 @@
+ if(NOT BUILD_SHARED_LIBS)
+     target_compile_definitions(${TARGET_NAME} PUBLIC OPENVINO_STATIC_LIBRARY)
+ 
++    # For static archives the linker needs every transitive dependency.
++    # Promote internal static libraries and system libs to PUBLIC so that
++    # consumers linking against openvino.lib pull them in automatically.
++    target_link_libraries(${TARGET_NAME} PUBLIC openvino::util
++                                                openvino::reference
++                                                openvino::builders
++                                                openvino::shape_inference
++                                                openvino::pugixml
++                                                ${CMAKE_DL_LIBS}
++                                                Threads::Threads)
++
+     # TODO: remove together we GNA plugin
+     # for static linkage the dependencies are in opposite order
+     if(TARGET inference_engine_ir_v7_reader)
+@@ -291,11 +300,53 @@
+         endif()
+     endif()
+ 
+-    # fill in PKGCONFIG_OpenVINO_PRIVATE_LIBS (platform-specific system libraries)
++    # For static builds all transitive dependencies become public; consumers
++    # must link the full closure.  Move Requires into the public field.
++    if(BUILD_SHARED_LIBS)
++        set(PKGCONFIG_OpenVINO_REQUIRES_PUBLIC "")
++        set(PKGCONFIG_OpenVINO_REQUIRES_PRIVATE "${PKGCONFIG_OpenVINO_REQUIRES}")
++    else()
++        set(PKGCONFIG_OpenVINO_REQUIRES_PUBLIC "${PKGCONFIG_OpenVINO_REQUIRES}")
++        set(PKGCONFIG_OpenVINO_REQUIRES_PRIVATE "")
++    endif()
++
++    # For static builds, add internal static libraries that consumers need to
++    # link against when using the openvino static archive.
++    if(NOT BUILD_SHARED_LIBS)
++        set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -lopenvino_util -lopenvino_itt -lopenvino_reference -lopenvino_builders -lopenvino_shape_inference")
++        if(NOT ENABLE_SYSTEM_PUGIXML)
++            set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -lpugixml")
++        endif()
++        # CPU plugin and its dependencies (statically linked in static builds)
++        if(ENABLE_INTEL_CPU)
++            set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -lopenvino_intel_cpu_plugin -lopenvino_onednn_cpu -lopenvino_snippets")
++            if(ENABLE_MLAS_FOR_CPU)
++                set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -lmlas")
++            endif()
++        endif()
++        # IR frontend (statically linked; removed from PKGCONFIG_OpenVINO_FRONTENDS)
++        if(ENABLE_OV_IR_FRONTEND)
++            set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -lopenvino_ir_frontend")
++        endif()
++    endif()
++
++    # fill in PKGCONFIG_OpenVINO_PRIVATE_LIBS (platform-specific system libraries).
++    # For shared builds these stay in Libs.private; for static builds they are
++    # appended to PKGCONFIG_OpenVINO_PRIVATE_DEPS which ends up in Libs.
+     if(WIN32)
+-        set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "")
++        if(BUILD_SHARED_LIBS)
++            set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "")
++        else()
++            set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "")
++            set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -lShlwapi")
++        endif()
+     else()
+-        set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "-ldl -lm -lpthread -lrt")
++        if(BUILD_SHARED_LIBS)
++            set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "-ldl -lm -lpthread -lrt")
++        else()
++            set(PKGCONFIG_OpenVINO_PRIVATE_LIBS "")
++            set(PKGCONFIG_OpenVINO_PRIVATE_DEPS "${PKGCONFIG_OpenVINO_PRIVATE_DEPS} -ldl -lm -lpthread -lrt")
++        endif()
+     endif()
+ 
+     # fill in the per-configuration library name postfix (e.g. "d" for Debug on
+@@ -343,6 +394,8 @@
+                 -D PKGCONFIG_OpenVINO_FRONTENDS=${PKGCONFIG_OpenVINO_FRONTENDS}
+                 -D PKGCONFIG_OpenVINO_PRIVATE_DEPS=${PKGCONFIG_OpenVINO_PRIVATE_DEPS}
+                 -D PKGCONFIG_OpenVINO_REQUIRES=${PKGCONFIG_OpenVINO_REQUIRES}
++                -D PKGCONFIG_OpenVINO_REQUIRES_PUBLIC=${PKGCONFIG_OpenVINO_REQUIRES_PUBLIC}
++                -D PKGCONFIG_OpenVINO_REQUIRES_PRIVATE=${PKGCONFIG_OpenVINO_REQUIRES_PRIVATE}
+                 -D PKGCONFIG_OpenVINO_PRIVATE_LIBS=${PKGCONFIG_OpenVINO_PRIVATE_LIBS}
+                 -D PKGCONFIG_OpenVINO_LIB_POSTFIX=${PKGCONFIG_OpenVINO_LIB_POSTFIX}
+                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/pkg_config_gen.cmake"
+--- a/b/src/cmake/pkg_config_gen.cmake	2026-07-27 13:11:04.326293194 +0000
++++ b/src/cmake/pkg_config_gen.cmake	2026-07-27 13:11:53.356729486 +0000
+@@ -9,6 +9,8 @@
+             PKGCONFIG_OpenVINO_FRONTENDS
+             PKGCONFIG_OpenVINO_PRIVATE_DEPS
+             PKGCONFIG_OpenVINO_REQUIRES
++            PKGCONFIG_OpenVINO_REQUIRES_PUBLIC
++            PKGCONFIG_OpenVINO_REQUIRES_PRIVATE
+             PKGCONFIG_OpenVINO_PRIVATE_LIBS
+             PKGCONFIG_OpenVINO_LIB_POSTFIX)
+     if(NOT DEFINED ${var})
+
+-- 
+2.43.0
